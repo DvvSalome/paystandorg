@@ -7,10 +7,14 @@
 //   ALLOWED_ORIGINS    comma-separated, e.g. https://apply.example.org
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected by Supabase.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { cleanAnswers, loadQuestions, validate } from "../_shared/validate.js";
+import "../_shared/window-shim.js";   // must stay before questions.js
+import "../_shared/questions.js";      // bundled as a module, so it ships with the deploy
+import { cleanAnswers, validate } from "../_shared/validate.js";
 
 const BUCKET = "applications";
-const G = loadQuestions(await Deno.readTextFile(new URL("../_shared/questions.js", import.meta.url)));
+// deno-lint-ignore no-explicit-any
+const G = (globalThis as any).window.GA27;
+if (!G || !G.FIELDS) throw new Error("questions.js did not load");
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false },
 });

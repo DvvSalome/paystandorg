@@ -613,7 +613,7 @@
         var ups = (res.uploads || []).map(function (u) {
           // Same request supabase-js sends for a signed upload URL: multipart PUT.
           var fd = new FormData(); fd.append("cacheControl", "3600"); fd.append("", FILES[u.question]);
-          return fetch(u.url, { method: "PUT", headers: { "x-upsert": "false" }, body: fd })
+          return fetch(u.url, { method: "PUT", headers: { "x-upsert": "false", "apikey": CFG.supabaseKey || "" }, body: fd })
             .then(function (r) { if (!r.ok) throw new Error("A file could not be uploaded (" + u.question + ")."); });
         });
         return Promise.all(ups).then(function () {

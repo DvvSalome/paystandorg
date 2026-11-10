@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grant Application 2027 — Paystand Impact Foundation</title>
+<meta name="description" content="Apply for a 2027 Paystand Impact Foundation grant.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Application form styles. Tokens come from index.html (:root). */
+:root { --ps-err: #B42318; --ps-ok: #0B7A55; --ps-field: #F5F8FF; }
+.progress { position: sticky; top: 0; z-index: 5; background: var(--ps-bg); padding: 12px 0 10px; margin-bottom: 18px; border-bottom: 1px solid var(--ps-border); }
+.pbar { height: 8px; border-radius: 99px; background: var(--ps-border); overflow: hidden; }
+.pfill { height: 100%; width: 0; background: var(--ps-coral); transition: width .2s; }
+.plabel { font-size: .85rem; color: var(--ps-gray); margin-top: 6px; }
+fieldset.sec { border: 0; background: transparent; padding: 0; margin: 0 0 40px; min-width: 0; }
+fieldset.sec > header { margin-bottom: 14px; }
+.secid { font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-coral); }
+fieldset.sec h3 { font-size: 1.35rem; margin: 2px 0 6px; color: var(--ps-navy); }
+.secnote { color: var(--ps-gray); margin: 0; max-width: 62ch; }
+.f { padding: 12px 0 16px; }
+.f.hidden { display: none; }
+.f > .q { display: block; font-weight: 600; margin: 0 0 4px; }
+.qid { display: inline-block; min-width: 2.4em; font-size: .78rem; font-weight: 600; color: var(--ps-gray); }
+.req-star { color: var(--ps-coral); margin-left: 4px; }
+.help { color: var(--ps-gray); font-size: .9rem; margin: 0 0 8px; max-width: 70ch; }
+.help:empty { display: none; }
+.body { display: flex; flex-direction: column; gap: .5rem; }
+input[type=text], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=date], textarea, select {
+  width: 100%; font: inherit; color: var(--ps-text); background: var(--ps-field);
+  border: 1px solid var(--ps-border); border-radius: 8px; padding: 10px 12px; min-height: 44px;
+}
+textarea { min-height: 96px; resize: vertical; }
+input[type=file] { font: inherit; color: var(--ps-text); max-width: 100%; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--ps-coral); outline-offset: 1px; }
+.f.error input:not([type=checkbox]):not([type=radio]), .f.error textarea, .f.error select { border-color: var(--ps-err); }
+.errmsg { color: var(--ps-err); font-size: .88rem; font-weight: 600; margin: 4px 0 0; }
+.opts { display: grid; gap: 8px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.opt input { margin-top: .35em; width: 18px; height: 18px; flex: none; accent-color: var(--ps-btn); }
+.opt.boxed { border: 1px solid var(--ps-border); border-radius: 8px; padding: 10px 12px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.wc { font-size: .8rem; color: var(--ps-gray); text-align: right; }
+.wc.over { color: var(--ps-err); font-weight: 600; }
+.computed { font-size: .9rem; color: var(--ps-gray); }
+.cs { position: relative; }
+.cs-list { display: none; position: absolute; z-index: 4; left: 0; right: 0; max-height: 240px; overflow: auto; background: var(--ps-card); border: 1px solid var(--ps-border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.cs-list.show { display: block; }
+.cs-item { padding: 9px 12px; cursor: pointer; }
+.cs-item:hover { background: var(--ps-light); }
+.tblwrap { overflow-x: auto; }
+table.grid { border-collapse: collapse; width: 100%; min-width: 520px; }
+table.grid th { text-align: left; font-size: .82rem; color: var(--ps-gray); padding: 4px 6px; }
+table.grid td { padding: 4px 6px; }
+.bline { display: grid; grid-template-columns: 1fr 140px; gap: 10px; align-items: center; }
+.bsum { font-weight: 600; font-size: .92rem; margin-top: 4px; }
+.bsum.ok { color: var(--ps-ok); } .bsum.bad { color: var(--ps-err); }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.submitbar { display: grid; gap: 12px; justify-items: start; margin-top: 8px; }
+button.submit { font: inherit; font-weight: 700; background: var(--ps-btn); color: #fff; border: 0; border-radius: 6px; padding: 14px 28px; font-size: 1.05rem; cursor: pointer; }
+button.submit:disabled { opacity: .6; cursor: wait; }
+button.submit:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 3px; }
+.status { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--ps-border); max-width: 70ch; }
+.status.ok { border-color: var(--ps-ok); }
+.status.bad { border-color: var(--ps-err); }
+.status:empty { display: none; }
+@media (max-width: 560px) {
+  .row2, .row3 { grid-template-columns: 1fr; }
+  .bline { grid-template-columns: 1fr 110px; }
+}
+@media (prefers-reduced-motion: reduce) { .pfill { transition: none; } }
+
+</style>
+<style>
+  /* Palette sampled from the paystand.org page in Wix (see docs/brand.md) */
+  :root {
+    --ps-navy: #011B5B;
+    --ps-coral: #E4714D;
+    --ps-bg: #ECF1FD;
+    --ps-card: #FFFFFF;
+    --ps-light: #E3EAF8;
+    --ps-border: #C9D1DB;
+    --ps-text: #1F2C3E;
+    --ps-gray: #5B6675;
+    --ps-btn: #011B5B;
+    --ps-blue: #2F6FB3;
+    --ps-link: #1D4ED8;
+    --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); color: var(--ps-text); background: var(--ps-bg); line-height: 1.55; }
+  a { color: var(--ps-link); }
+  .wrap { max-width: 820px; margin: 0 auto; padding-inline: max(20px, env(safe-area-inset-left)); }
+  main { padding: 0 0 40px; }
+  .banner { background: var(--ps-navy); color: #fff; padding: 36px 0 32px; margin-bottom: 28px; border-bottom: 4px solid var(--ps-coral); }
+  .kicker { margin: 0 0 6px; font-size: .85rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-coral); }
+  .banner h1 { font-size: clamp(1.7rem, 4vw, 2.2rem); line-height: 1.15; margin: 0 0 8px; color: #fff; }
+  .banner .lead { color: #D5DCF0; margin: 0; max-width: 62ch; }
+  a:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<main>
+  <div class="banner"><div class="wrap">
+    <p class="kicker">Paystand Impact Foundation</p>
+    <h1>Grant Application 2027</h1>
+    <p class="lead">Please complete all required fields. You may answer in English, Spanish or Portuguese.</p>
+  </div></div>
+  <div class="wrap">
+    <div class="progress" aria-live="polite">
+      <div class="pbar"><div class="pfill" id="pfill"></div></div>
+      <div class="plabel" id="plabel">0 of 0 required questions answered</div>
+    </div>
+    <form id="form" novalidate autocomplete="on"></form>
+  </div>
+</main>
+
+<script>
+/* Runtime settings. Nothing secret goes here: this file is public. */
+window.GA27_CONFIG = {
+  // Base URL of the submission API (Supabase Edge Function). Empty = preview build,
+  // the form validates but nothing is sent. Contract: docs/submission-api.md
+  endpoint: "https://tdjkvnqiylwfccwbljmi.supabase.co/functions/v1/intake",
+  // Cloudflare Turnstile site key (public). Empty = no captcha widget.
+  turnstileSiteKey: "",
+  maxFileMB: 10
+};
+
+</script>
+<script>
+/* Grant Application 2027 — question definitions (v3, 61 questions).
+   Source: Ivan's Apps Script preview, 10 Nov 2026. Edit here to change questions;
+   the form engine in form.js does not hard-code any question. */
+(function () {
+  "use strict";
+  var COUNTRIES = ["Afghanistan","Albania","Algeria","Angola","Argentina","Armenia","Australia","Austria","Bangladesh","Belgium","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","Colombia","Comoros","Congo (DRC)","Congo (Republic)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Czechia","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Eritrea","Estonia","Eswatini","Ethiopia","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kenya","Kosovo","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Lithuania","Madagascar","Malawi","Malaysia","Mali","Mauritania","Mexico","Moldova","Mongolia","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Macedonia","Norway","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Romania","Rwanda","Senegal","Serbia","Sierra Leone","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Trinidad and Tobago","Tunisia","Turkey","Uganda","Ukraine","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
+  var SECTIONS = [
+    { id: "0", title: "Before you apply",
+      note: "Two short checklists. The first tells you which documents to gather; the second confirms you are eligible. Takes about two minutes." },
+    { id: "A", title: "Tell us about you",
+      note: "Five questions about who is applying and how much you are requesting. Your answers here determine which of the later questions apply to you, so some sections will be shorter than others." },
+    { id: "B", title: "Organization",
+      note: "Your legal details, exactly as they appear on your registration document or identification. These carry through to the grant agreement if you are selected, so accuracy here saves time later." },
+    { id: "C", title: "Documents",
+      note: "Upload your legal identity document and, if you have it to hand, your tax form. Accepted files: PDF, JPG or PNG, maximum 10 MB each. The tax form is optional now and required only if you are selected." },
+    { id: "D", title: "Contact and authorized representative",
+      note: "Who we write to about this application, and who would sign the agreement. These can be the same person." },
+    { id: "E", title: "Project",
+      note: "The substance of your application: what you will do, who with, and what will change. This is the longest section — around twenty minutes if you have your plan to hand." },
+    { id: "F", title: "Measurement",
+      note: "How you will show the project worked. Choose one main measure and tell us where you are starting from and where you expect to be in twelve months. If you do not have a starting figure yet, you can tell us how you will collect it." },
+    { id: "G", title: "Budget and sustainability",
+      note: "The money, and what keeps running after the grant ends. Amounts in US dollars, numbers only — no currency symbols." },
+    { id: "H", title: "Experience and support",
+      note: "Your team's capacity, and what non-financial support would help. We offer technical assistance and volunteers, so this helps us match what we have to what you need." },
+    { id: "I", title: "Participant protection",
+      note: "How you keep participants safe, including children and anyone whose data you hold. Required of every applicant." },
+    { id: "J", title: "Renewal",
+      note: "Shown only if you received a grant from us in 2026. Tell us what happened with it." },
+    { id: "K", title: "Disclosures and certification",
+      note: "Anything we should know about, and your confirmation that the application is accurate. Last section." }
+  ];
+
+  var F = [
+    
+    { id: "0.1", s: "0", type: "checks", req: false,
+      label: "What you will need to apply",
+      help: "Tick each item to confirm you have it ready. This list is for your reference and will not block submission.",
+      options: [
+        "Organizations: registration or tax ID number, legal representative's name, proof of nonprofit or charitable status (NGOs), W-9 or W-8BEN-E, last year's budget",
+        "Individuals: photo ID, W-9 or W-8BEN",
+        "Project description, budget, timeline and milestone plan",
+        "Contact details for the primary contact and the authorized representative"
+      ] },
+    { id: "0.2", s: "0", type: "checks", req: "all",
+      label: "Eligibility checklist",
+      help: "All four must be checked. If you cannot check one, explain it in section K rather than stopping here.",
+      options: [
+        "Our work serves people facing economic barriers",
+        "We have a charitable purpose — no political campaigning or private benefit",
+        "We accept outcome reporting and follow-up requirements",
+        "Our impact does not rely on Bitcoin price gains"
+      ] },
+
+    
+    { id: "A1", s: "A", type: "radio", req: true,
+      label: "Are you applying as an organization or as an individual?",
+      options: ["Organization (legally registered entity)", "Individual"] },
+    { id: "A1b", s: "A", type: "radio", req: true,
+      label: "What type of organization?",
+      showIf: function (v) { return (v.A1 || "").indexOf("Organization") === 0; },
+      cond: "A1 = Organization",
+      options: ["Nonprofit / NGO", "Social enterprise or other company"] },
+    { id: "A2", s: "A", type: "radio", req: true,
+      label: "How long has your organization or project been operating?",
+      options: ["Less than 1 year", "1–3 years", "More than 3 years"] },
+    { id: "A3", s: "A", type: "radio", req: true,
+      label: "Have you received a grant from Paystand.org before?",
+      options: ["No", "Yes, in 2026", "Yes, before 2026"] },
+    { id: "A4", s: "A", type: "number", req: true, min: 1, prefix: "USD",
+      label: "How much are you requesting from Paystand.org?",
+      help: "An approximate figure is fine \u2014 you can refine it in the budget section." },
+
+    
+    { id: "B1", s: "B", type: "text", req: true,
+      label: "Legal name, exactly as it appears on your registration document or on your ID",
+      help: "This must match the document you upload in section C exactly." },
+    { id: "B2", s: "B", type: "country", req: true,
+      label: "Country of registration, or country of residence" },
+    { id: "B3", s: "B", type: "text", req: true,
+      label: "Full name of the legal representative or founder" },
+    { id: "B4", s: "B", type: "textarea", req: true, maxWords: 40, rows: 2,
+      label: "Registered address",
+      help: "Street, city, state or region, postal code." },
+    { id: "B5", s: "B", type: "number", req: true, prefix: "USD",
+      label: "Total organizational budget last year",
+      showIf: function (v, st) { return st.profile === "Established"; },
+      cond: "Established profile" },
+    { id: "B7", s: "B", type: "number", req: true, min: 0,
+      label: "Number of full-time paid staff",
+      showIf: function (v) { return (v.A1 || "").indexOf("Organization") === 0; },
+      cond: "A1 = Organization" },
+    { id: "B8", s: "B", type: "text", req: true,
+      label: "Registration or tax ID number",
+      help: "As it appears on your registration document.",
+      showIf: function (v) { return (v.A1 || "").indexOf("Organization") === 0; },
+      cond: "A1 = Organization" },
+    { id: "B6", s: "B", type: "url", req: false,
+      label: "Website or main social media profile" },
+
+    
+    { id: "C1", s: "C", type: "file", req: true,
+      label: "Legal identity document",
+      helpFn: function (v) {
+        if ((v.A1 || "").indexOf("Individual") === 0) return "A photo of a valid official identification.";
+        if ((v.A1b || "").indexOf("Nonprofit") === 0) return "Official registration AND proof of nonprofit or charitable status — in the US the IRS 501(c)(3) determination letter, elsewhere the local equivalent. A W-9 or W-8 does not prove nonprofit status.";
+        if ((v.A1b || "").indexOf("Social") === 0) return "Government registration certificate — commercial registry or tax certificate.";
+        return "Answer A1 to see which document applies to you.";
+      } },
+    { id: "C2", s: "C", type: "file", req: false,
+      label: "Tax form — W-9 or W-8",
+      helpFn: function (v) {
+        var base = "Optional now, required if you are selected. Uploading it now speeds up your agreement.";
+        if ((v.A1 || "").indexOf("Individual") === 0) return "In the US: W-9. Outside the US: W-8BEN. " + base;
+        return "Registered in the US: W-9. Outside the US: W-8BEN-E. " + base;
+      } },
+    { id: "C3", s: "C", type: "text", req: false,
+      label: "If the registration is in a person's name: who is it, and what is their role?",
+      help: "Leave blank if the registration is in the organization's name.",
+      showIf: function (v) { return (v.A1 || "").indexOf("Organization") === 0; },
+      cond: "A1 = Organization" },
+
+    
+    { id: "D1", s: "D", type: "composite", req: true,
+      label: "Primary contact",
+      help: "We will use this email for all correspondence about your application.",
+      parts: [
+        { k: "name", ph: "Full name", t: "text" },
+        { k: "title", ph: "Title", t: "text" },
+        { k: "email", ph: "Email", t: "email" },
+        { k: "phone", ph: "Phone or WhatsApp", t: "tel" }
+      ] },
+    { id: "D2", s: "D", type: "radio", req: true,
+      label: "Is the primary contact authorized to sign agreements for the organization?",
+      options: ["Yes", "No"] },
+    { id: "D3", s: "D", type: "composite", req: true,
+      label: "Authorized representative who will sign the agreement",
+      showIf: function (v) { return v.D2 === "No"; },
+      cond: "D2 = No",
+      parts: [
+        { k: "name", ph: "Full name", t: "text" },
+        { k: "title", ph: "Title", t: "text" },
+        { k: "email", ph: "Email", t: "email" }
+      ] },
+    { id: "D4", s: "D", type: "email", req: false,
+      label: "Additional email to copy on the agreement and payment notices" },
+
+    
+    { id: "E1", s: "E", type: "titlesummary", req: true, maxWords: 60,
+      label: "Project title, and a summary in 2–3 sentences" },
+    { id: "E2", s: "E", type: "datepair", req: true,
+      label: "Start date and end date",
+      help: "Project duration is calculated from these two dates." },
+    { id: "E3", s: "E", type: "text", req: true,
+      label: "Where will the project take place?",
+      help: "Country, city, communities." },
+    { id: "E4", s: "E", type: "textarea", req: true, maxWords: 150,
+      label: "What economic barrier will this project address?",
+      help: "Name the barrier, who it affects, and why Bitcoin helps." },
+    { id: "E5", s: "E", type: "number", req: true, min: 1,
+      label: "How many people will participate directly?" },
+    { id: "E6", s: "E", type: "textarea", req: true, maxWords: 150,
+      label: "Who are they, how will they be selected, and what is your relationship with them?" },
+    { id: "E7", s: "E", type: "text", req: true,
+      label: "Your primary result in one sentence",
+      help: "Use the form: \"By [date], [number or %] of [participants] will [result].\"" },
+    { id: "E8", s: "E", type: "textarea", req: true, maxWords: 150,
+      label: "How will participants apply what they learn, and which partner creates that opportunity?",
+      help: "A merchant, employer, cooperative or local partner — name it." },
+    { id: "E9", s: "E", type: "checks", req: 1,
+      label: "What will Bitcoin be used for?",
+      options: ["Paying", "Receiving payments", "Remittances", "Saving", "Other"] },
+    { id: "E10", s: "E", type: "milestones", req: true,
+      label: "Three milestones",
+      help: "Each needs a target date and the evidence you will provide." },
+    { id: "E11", s: "E", type: "textarea", req: true, maxWords: 150,
+      label: "What could prevent success, and how will you reduce that risk?" },
+    { id: "E12", s: "E", type: "radio", req: true, boxed: true,
+      label: "Where do you expect the community to be when the grant ends?",
+      help: "Your commitment for the end of the grant. It is recorded in the agreement if you are selected.",
+      options: [
+        "Awareness \u2014 the community is learning about Bitcoin and its practical use",
+        "Useful adoption \u2014 people use Bitcoin for some real transactions",
+        "Local circulation \u2014 Bitcoin flows between community members for goods and services",
+        "Resilience \u2014 the local economy sustains itself without external support"
+      ] },
+    { id: "E13", s: "E", type: "textarea", req: true, maxWords: 150,
+      label: "How will value circulate locally?",
+      help: "A rise in the Bitcoin price does not count as impact \u2014 describe how value moves between people." },
+
+    
+    { id: "F1", s: "F", type: "radio", req: true, boxed: true,
+      label: "Main measure \u2014 which one will you report on?",
+      help: "Choose the one that best fits what your project changes. You will report on this same measure throughout.",
+      options: [
+        "Skills \u2014 share of trained participants who complete a Bitcoin transaction on their own",
+        "Access \u2014 share of participants with a wallet they have used in the last 90 days",
+        "Commerce \u2014 number of merchants trading in the last 30 days",
+        "Remittances \u2014 share of remittances received in Bitcoin, and the cost compared with before",
+        "Recovery \u2014 an emergency fund in place, funded by the community"
+      ] },
+    { id: "F2", s: "F", type: "baseline", req: true,
+      label: "Where are you starting from?",
+      help: "Give the figure today and the date you measured it \u2014 or, if you do not have it yet, say how and when you will collect it. Either answer is complete." },
+    { id: "F3", s: "F", type: "valuedate", req: true,
+      label: "Where do you expect to be at 12 months?",
+      help: "The figure you are aiming for, and the date you will measure it." },
+    { id: "F4", s: "F", type: "radio", req: true,
+      label: "How will you verify it?",
+      options: ["Survey", "Partner or transaction records", "Merchant registry or BTC Map", "Other"] },
+    { id: "F5", s: "F", type: "textarea", req: false, maxWords: 150,
+      label: "Previous Bitcoin or financial-inclusion projects and their results",
+      help: "Numbers, and a link if available. Leave blank if you have none." },
+
+    
+    { id: "G1", s: "G", type: "number", req: true, prefix: "USD",
+      label: "Total project budget" },
+    { id: "G2", s: "G", type: "number", req: true, prefix: "USD", min: 1,
+      label: "Amount requested from Paystand.org",
+      help: "Pre-filled from A4. Adjust it if your budget work changed the figure — this is the authoritative number." },
+    { id: "G3", s: "G", type: "funders", req: true,
+      label: "Are you applying to other funders for this same project?" },
+    { id: "G4", s: "G", type: "budget", req: true,
+      label: "Requested amount by category",
+      help: "The categories must sum to G2.",
+      showIf: function (v, st) { return st.profile === "Established"; },
+      cond: "Established profile",
+      cats: ["Program delivery", "People and training", "Technology or equipment", "Monitoring and safeguarding", "Administration"] },
+    { id: "G5", s: "G", type: "textarea", req: true, maxWords: 100,
+      label: "Main uses of the funds",
+      showIf: function (v, st) { return st.profile === "Initial"; },
+      cond: "Initial profile" },
+    { id: "G7", s: "G", type: "textarea", req: true, maxWords: 150,
+      label: "What will keep working after the grant ends, and how will you sustain it?",
+      help: "Say what continues, who sustains it, and with what resources." },
+    { id: "G8", s: "G", type: "radio", req: true,
+      label: "How would you prefer to receive the funds?",
+      options: ["Bitcoin (through Bitwage)", "Bank transfer, ACH (US accounts)", "Other \u2014 we will ask for details"] },
+
+    
+    { id: "H1", s: "H", type: "radio", req: true, boxed: true,
+      label: "Which option best describes your team's capacity?",
+      options: [
+        "1. We have a robust in-house capacity, including administrative staff and a team able to deliver high-quality skills development sessions to all our beneficiaries independently.",
+        "2. We have some in-house capacity, but we will need additional external support to comply with project reporting and reach the breadth of beneficiaries we intend to serve.",
+        "3. We do not have the in-house capacity to meet administrative tasks or deliver training independently; in addition to tools and materials provided by Paystand, we will need external help for high-quality delivery."
+      ] },
+    { id: "H2", s: "H", type: "textarea", req: true, maxWords: 150,
+      label: "How would you use Paystand.org's technical support and volunteers?",
+      help: "We offer both \u2014 tell us what would actually help." },
+
+    
+    { id: "I1", s: "I", type: "radio", req: true,
+      label: "Will the project involve children under 18?",
+      options: ["Directly", "Incidental contact", "No"] },
+    { id: "I2", s: "I", type: "safeguard", req: true,
+      label: "Child safeguarding policy",
+      help: "Upload your policy, or confirm one will be in place before funding, and name the person responsible.",
+      showIf: function (v) { return v.I1 === "Directly" || v.I1 === "Incidental contact"; },
+      cond: "I1 = Directly or Incidental contact" },
+    { id: "I3", s: "I", type: "textarea", req: true, maxWords: 100,
+      label: "What participant data will you collect, and how will you protect it?",
+      help: "Who holds it, where it is stored, and how long you keep it." },
+
+    
+    { id: "J1", s: "J", type: "textarea", req: true, maxWords: 200,
+      label: "What did you promise in 2026, and what did you achieve?",
+      help: "Use numbers.",
+      showIf: function (v) { return v.A3 === "Yes, in 2026"; },
+      cond: "A3 = Yes, in 2026" },
+    { id: "J2", s: "J", type: "radio", req: true,
+      label: "Which stage did the community reach in 2026?",
+      showIf: function (v) { return v.A3 === "Yes, in 2026"; },
+      cond: "A3 = Yes, in 2026",
+      options: ["Awareness", "Useful adoption", "Local circulation", "Resilience"] },
+    { id: "J3", s: "J", type: "file", req: false,
+      label: "Upload your 2026 report, if you have one",
+      showIf: function (v) { return v.A3 === "Yes, in 2026"; },
+      cond: "A3 = Yes, in 2026" },
+
+    
+    { id: "K1", s: "K", type: "checks", req: 1,
+      label: "Anything to disclose?",
+      help: "Tick \"None\" if there is nothing to disclose.",
+      options: ["Legal or financial issues", "Adverse media", "Conflict of interest with Paystand.org", "None"] },
+    { id: "K2", s: "K", type: "textarea", req: true, maxWords: 300,
+      label: "Details of any disclosure, or of any eligibility statement you could not check",
+      showIf: function (v) {
+        var k1 = v.K1 || [];
+        var disclosed = k1.length && k1.indexOf("None") === -1;
+        var elig = (v["0.2"] || []).length < 4;
+        return disclosed || elig;
+      },
+      cond: "K1 ≠ None, or 0.2 incomplete" },
+    { id: "K3", s: "K", type: "checks", req: "all",
+      label: "Certification",
+      options: [
+        "The information in this application is accurate",
+        "Funds will be used only for the approved purpose",
+        "We will report material changes",
+        "Paystand.org may verify this information and contact us",
+        "I am authorized to apply on behalf of this applicant"
+      ] },
+    { id: "K4", s: "K", type: "checks", req: "all",
+      label: "Data consent",
+      links: [{ t: "Grant terms and conditions", href: "https://www.paystand.org/grants-terms-and-conditions" }],
+      options: ["I consent to the storing and processing of personal data, per the Terms and Privacy Policy"] },
+    { id: "K5", s: "K", type: "submitter", req: true,
+      label: "Name of the person submitting, and date" }
+  ];
+  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F };
+})();
+
+</script>
+<script>
+/* Grant Application 2027 — form engine.
+   Renders GA27.SECTIONS / GA27.FIELDS, applies conditional logic, validates and submits.
+   Nothing on this page mentions screening or scoring: the form only collects answers. */
+(function () {
+  "use strict";
+
+  var G = window.GA27, CFG = window.GA27_CONFIG || {};
+  var SECTIONS = G.SECTIONS, F = G.FIELDS, COUNTRIES = G.COUNTRIES;
+  var MAX_BYTES = (CFG.maxFileMB || 10) * 1024 * 1024;
+  var EXT = /\.(pdf|jpe?g|png)$/i;
+
+  var V = {};              // answers by question id (+ "__" sub-values)
+  var FILES = {};          // File objects by question id
+  var ST = { profile: "—" };
+  var form = document.getElementById("form");
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function words(s) { return s && s.trim() ? s.trim().split(/\s+/).length : 0; }
+  function num(x) {
+    var n = parseFloat(String(x == null ? "" : x).replace(/[$,\s]/g, ""));
+    return isNaN(n) ? null : n;
+  }
+  function money(n) { return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 }); }
+  function isOrg() { return (V.A1 || "").indexOf("Organization") === 0; }
+
+  /* ---------- rendering ---------- */
+  SECTIONS.forEach(function (sec) {
+    var box = el("fieldset", "sec");
+    box.id = "sec-" + sec.id;
+    var head = el("header");
+    head.appendChild(el("div", "secid", "Section " + sec.id));
+    head.appendChild(el("h3", null, sec.title));
+    if (sec.note) head.appendChild(el("p", "secnote", sec.note));
+    box.appendChild(head);
+    F.filter(function (f) { return f.s === sec.id; }).forEach(function (f) {
+      box.appendChild(buildField(f));
+    });
+    form.appendChild(box);
+  });
+
+  // Honeypot: real people never see or fill this; bots often do.
+  var hp = el("div", "hp");
+  hp.setAttribute("aria-hidden", "true");
+  var hpi = el("input"); hpi.type = "text"; hpi.name = "company_website"; hpi.tabIndex = -1;
+  hpi.autocomplete = "off";
+  hp.appendChild(hpi);
+  form.appendChild(hp);
+
+  var bar = el("div", "submitbar");
+  var captcha = el("div"); captcha.id = "captcha";
+  var sub = el("button", "submit", "Submit application");
+  sub.type = "button";
+  var status = el("div", "status"); status.id = "status";
+  status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
+  bar.appendChild(captcha); bar.appendChild(sub); bar.appendChild(status);
+  form.appendChild(bar);
+
+  function buildField(f) {
+    var wrap = el("div", "f");
+    wrap.id = "f-" + f.id;
+    wrap.dataset.fid = f.id;
+    wrap.setAttribute("role", "group");
+    wrap.setAttribute("aria-labelledby", "l-" + f.id);
+
+    var lab = el("label", "q");
+    lab.id = "l-" + f.id;
+    lab.appendChild(el("span", "qid", f.id));
+    lab.appendChild(el("span", null, f.label));
+    if (f.req) lab.appendChild(el("span", "req-star", "*"));
+    wrap.appendChild(lab);
+
+    var help = el("p", "help");
+    help.id = "h-" + f.id;
+    if (f.help) help.textContent = f.help;
+    if (f.links) {
+      f.links.forEach(function (l) {
+        var a = el("a", null, l.t);
+        a.href = l.href; a.target = "_blank"; a.rel = "noopener";
+        help.appendChild(document.createTextNode(" "));
+        help.appendChild(a);
+      });
+    }
+    wrap.appendChild(help);
+
+    var body = el("div", "body");
+    wrap.appendChild(body);
+    var first = null;                       // control that the label points to
+    function reg(node) { if (!first) first = node; return node; }
+
+    switch (f.type) {
+      case "checks": {
+        var g = el("div", "opts");
+        f.options.forEach(function (o) {
+          var l = el("label", "opt" + (f.boxed ? " boxed" : ""));
+          var cb = el("input"); cb.type = "checkbox"; cb.value = o;
+          cb.addEventListener("change", function () {
+            V[f.id] = Array.prototype.slice.call(g.querySelectorAll("input:checked"))
+              .map(function (x) { return x.value; });
+            refresh();
+          });
+          l.appendChild(cb); l.appendChild(el("span", null, o));
+          g.appendChild(l);
+        });
+        body.appendChild(g);
+        break;
+      }
+      case "radio": {
+        var rg = el("div", "opts");
+        f.options.forEach(function (o) {
+          var l = el("label", "opt" + (f.boxed ? " boxed" : ""));
+          var rb = el("input"); rb.type = "radio"; rb.name = f.id; rb.value = o;
+          rb.addEventListener("change", function () { V[f.id] = o; refresh(); });
+          l.appendChild(rb); l.appendChild(el("span", null, o));
+          rg.appendChild(l);
+        });
+        body.appendChild(rg);
+        break;
+      }
+      case "text": case "email": case "url": {
+        var inp = reg(el("input"));
+        inp.type = f.type;
+        inp.addEventListener("input", function () { V[f.id] = inp.value; refresh(); });
+        body.appendChild(inp);
+        break;
+      }
+      case "valuedate": {
+        var vr = el("div", "row2");
+        var vv = el("input"); vv.type = "text";
+        vv.placeholder = "Figure, e.g. 60 merchants or 80%";
+        vv.setAttribute("aria-label", f.label + " — figure");
+        var vd = el("input"); vd.type = "date";
+        vd.setAttribute("aria-label", f.label + " — date");
+        var updVD = function () {
+          V[f.id] = vv.value && vd.value ? vv.value + " @ " + vd.value : "";
+          V[f.id + "__value"] = vv.value; V[f.id + "__date"] = vd.value;
+          refresh();
+        };
+        vv.addEventListener("input", updVD); vd.addEventListener("change", updVD);
+        vr.appendChild(vv); vr.appendChild(vd); body.appendChild(vr);
+        break;
+      }
+      case "baseline": {
+        var br = el("div", "row2");
+        var bv = el("input"); bv.type = "text";
+        bv.placeholder = "Figure today, e.g. 40 merchants";
+        bv.setAttribute("aria-label", f.label + " — figure today");
+        var bd = el("input"); bd.type = "date";
+        bd.setAttribute("aria-label", f.label + " — date measured");
+        br.appendChild(bv); br.appendChild(bd);
+        var tl = el("label", "opt");
+        var tc = el("input"); tc.type = "checkbox";
+        tl.appendChild(tc);
+        tl.appendChild(el("span", null, "I do not have this figure yet — I will collect it"));
+        var pw = el("div"); pw.hidden = true;
+        var pt = el("textarea"); pt.rows = 2;
+        pt.placeholder = "How and when will you collect it?";
+        pt.setAttribute("aria-label", "Collection plan");
+        pw.appendChild(pt);
+        var updBL = function () {
+          if (tc.checked) {
+            V[f.id] = pt.value ? "Plan: " + pt.value : "";
+            V[f.id + "__mode"] = "plan"; V[f.id + "__plan"] = pt.value;
+          } else {
+            V[f.id] = bv.value && bd.value ? bv.value + " @ " + bd.value : "";
+            V[f.id + "__mode"] = "value";
+            V[f.id + "__value"] = bv.value; V[f.id + "__date"] = bd.value;
+          }
+          refresh();
+        };
+        tc.addEventListener("change", function () {
+          pw.hidden = !tc.checked; br.hidden = tc.checked; updBL();
+        });
+        bv.addEventListener("input", updBL); bd.addEventListener("change", updBL);
+        pt.addEventListener("input", updBL);
+        body.appendChild(br); body.appendChild(tl); body.appendChild(pw);
+        break;
+      }
+      case "number": {
+        var wn = el("div", "bline");
+        wn.style.gridTemplateColumns = f.prefix ? "auto 1fr" : "1fr";
+        if (f.prefix) wn.appendChild(el("span", "computed", f.prefix));
+        var ni = reg(el("input"));
+        ni.type = "number"; ni.min = f.min != null ? f.min : 0; ni.step = "1";
+        ni.inputMode = "decimal"; ni.id = "i-" + f.id;
+        ni.addEventListener("input", function () {
+          if (f.id === "G2") V.__g2touched = true;
+          V[f.id] = ni.value; refresh();
+        });
+        wn.appendChild(ni); body.appendChild(wn);
+        break;
+      }
+      case "textarea": {
+        var ta = reg(el("textarea"));
+        if (f.rows) ta.rows = f.rows;
+        var wc = el("div", "wc", "0 / " + f.maxWords + " words");
+        ta.addEventListener("input", function () {
+          V[f.id] = ta.value;
+          var n = words(ta.value);
+          wc.textContent = n + " / " + f.maxWords + " words";
+          wc.className = "wc" + (n > f.maxWords ? " over" : "");
+          refresh();
+        });
+        body.appendChild(ta); body.appendChild(wc);
+        break;
+      }
+      case "titlesummary": {
+        var ti = reg(el("input")); ti.type = "text"; ti.placeholder = "Project title";
+        ti.setAttribute("aria-label", "Project title");
+        var sm = el("textarea"); sm.rows = 3; sm.placeholder = "Summary in 2–3 sentences";
+        sm.setAttribute("aria-label", "Summary");
+        var wc2 = el("div", "wc", "0 / " + f.maxWords + " words");
+        var upd = function () {
+          V[f.id] = (ti.value ? ti.value + " — " : "") + sm.value;
+          V[f.id + "__title"] = ti.value; V[f.id + "__summary"] = sm.value;
+          var n = words(sm.value);
+          wc2.textContent = n + " / " + f.maxWords + " words";
+          wc2.className = "wc" + (n > f.maxWords ? " over" : "");
+          refresh();
+        };
+        ti.addEventListener("input", upd); sm.addEventListener("input", upd);
+        body.appendChild(ti); body.appendChild(sm); body.appendChild(wc2);
+        break;
+      }
+      case "datepair": {
+        var r = el("div", "row2");
+        var d1 = el("input"); d1.type = "date"; d1.setAttribute("aria-label", "Start date");
+        var d2 = el("input"); d2.type = "date"; d2.setAttribute("aria-label", "End date");
+        var dn = el("div", "computed", "Duration will be calculated from these dates.");
+        var updD = function () {
+          V[f.id] = d1.value && d2.value ? d1.value + " to " + d2.value : "";
+          V[f.id + "__start"] = d1.value; V[f.id + "__end"] = d2.value;
+          if (d1.value && d2.value) {
+            var a = new Date(d1.value), b = new Date(d2.value);
+            var m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+            if (b.getDate() < a.getDate()) m -= 1;
+            V[f.id + "__months"] = m;
+            if (m > 0) dn.textContent = "Duration: " + m + " months";
+            else { dn.textContent = "The end date must be after the start date."; V[f.id] = ""; }
+          } else dn.textContent = "Duration will be calculated from these dates.";
+          refresh();
+        };
+        d1.addEventListener("change", updD); d2.addEventListener("change", updD);
+        r.appendChild(d1); r.appendChild(d2);
+        body.appendChild(r); body.appendChild(dn);
+        break;
+      }
+      case "country": {
+        var cs = el("div", "cs");
+        var ci = reg(el("input")); ci.type = "text"; ci.autocomplete = "off";
+        ci.placeholder = "Start typing a country…";
+        ci.setAttribute("role", "combobox"); ci.setAttribute("aria-expanded", "false");
+        var list = el("div", "cs-list");
+        var render = function (filter) {
+          list.textContent = "";
+          var ff = (filter || "").toLowerCase();
+          var hits = COUNTRIES.filter(function (c) { return c.toLowerCase().indexOf(ff) !== -1; }).slice(0, 60);
+          hits.forEach(function (c) {
+            var it = el("div", "cs-item", c);
+            it.addEventListener("mousedown", function (e) {
+              e.preventDefault();
+              ci.value = c; V[f.id] = c; list.classList.remove("show");
+              ci.setAttribute("aria-expanded", "false"); refresh();
+            });
+            list.appendChild(it);
+          });
+          list.classList.toggle("show", hits.length > 0);
+          ci.setAttribute("aria-expanded", hits.length > 0 ? "true" : "false");
+        };
+        ci.addEventListener("input", function () { V[f.id] = ""; render(ci.value); refresh(); });
+        ci.addEventListener("focus", function () { render(ci.value); });
+        ci.addEventListener("blur", function () {
+          window.setTimeout(function () { list.classList.remove("show"); }, 120);
+        });
+        cs.appendChild(ci); cs.appendChild(list); body.appendChild(cs);
+        break;
+      }
+      case "file": {
+        var fi = reg(el("input")); fi.type = "file"; fi.accept = ".pdf,.jpg,.jpeg,.png";
+        var fe = el("p", "errmsg"); fe.hidden = true;
+        fi.addEventListener("change", function () {
+          var file = fi.files && fi.files[0];
+          fe.hidden = true; delete FILES[f.id];
+          if (file) {
+            if (!EXT.test(file.name)) { fe.textContent = "Use a PDF, JPG or PNG file."; fe.hidden = false; fi.value = ""; file = null; }
+            else if (file.size > MAX_BYTES) { fe.textContent = "That file is larger than " + (CFG.maxFileMB || 10) + " MB."; fe.hidden = false; fi.value = ""; file = null; }
+          }
+          if (file) FILES[f.id] = file;
+          V[f.id] = file ? file.name : "";
+          refresh();
+        });
+        body.appendChild(fi); body.appendChild(fe);
+        break;
+      }
+      case "composite": {
+        var cr = el("div", f.parts.length > 3 ? "row2" : "row3");
+        var vals = {};
+        f.parts.forEach(function (p) {
+          var pi = el("input"); pi.type = p.t; pi.placeholder = p.ph;
+          pi.setAttribute("aria-label", f.label + " — " + p.ph);
+          if (p.k === "email") pi.autocomplete = "email";
+          if (p.k === "name") pi.autocomplete = "name";
+          if (p.k === "phone") pi.autocomplete = "tel";
+          pi.addEventListener("input", function () {
+            vals[p.k] = pi.value;
+            V[f.id] = [vals.name, vals.title, vals.email, vals.phone].filter(Boolean).join(", ");
+            Object.keys(vals).forEach(function (k) { V[f.id + "__" + k] = vals[k]; });
+            refresh();
+          });
+          if (!first) reg(pi);
+          cr.appendChild(pi);
+        });
+        body.appendChild(cr);
+        break;
+      }
+      case "milestones": {
+        var wrapT = el("div", "tblwrap");
+        var tb = el("table", "grid");
+        var th = el("thead"), hr = el("tr");
+        ["Milestone", "Target date", "Evidence"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+        th.appendChild(hr); tb.appendChild(th);
+        var tbody = el("tbody");
+        var rows = [{}, {}, {}];
+        rows.forEach(function (rowv, i) {
+          var tr = el("tr");
+          [["m", "text"], ["d", "date"], ["e", "text"]].forEach(function (c) {
+            var td = el("td");
+            var ii = el("input"); ii.type = c[1];
+            ii.setAttribute("aria-label", "Milestone " + (i + 1) + " " + c[0]);
+            ii.addEventListener("input", function () {
+              rowv[c[0]] = ii.value;
+              V[f.id] = rows.map(function (rr) { return [rr.m, rr.d, rr.e].filter(Boolean).join(" | "); })
+                .filter(Boolean).join("; ");
+              V[f.id + "__rows"] = rows.map(function (rr) { return { milestone: rr.m || "", date: rr.d || "", evidence: rr.e || "" }; });
+              refresh();
+            });
+            td.appendChild(ii); tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        tb.appendChild(tbody); wrapT.appendChild(tb); body.appendChild(wrapT);
+        break;
+      }
+      case "funders": {
+        var rg2 = el("div", "opts");
+        var tblWrap = el("div", "tblwrap"); tblWrap.hidden = true;
+        var frows = [{}, {}];
+        var syncFunders = function () {
+          var yn = V[f.id + "__yn"] || "";
+          if (yn === "No") V[f.id] = "No";
+          else {
+            var parts = frows.filter(function (r) { return r.n; }).map(function (r) {
+              return r.n + ", " + (r.a || "?") + ", " + (r.s || "status unclear");
+            });
+            V[f.id] = parts.length ? "Yes. " + parts.join("; ") : (yn === "Yes" ? "Yes" : "");
+          }
+          V[f.id + "__rows"] = frows.map(function (r) { return { funder: r.n || "", amount: r.a || "", status: r.s || "" }; });
+          refresh();
+        };
+        ["No", "Yes"].forEach(function (o) {
+          var l = el("label", "opt");
+          var rb = el("input"); rb.type = "radio"; rb.name = f.id; rb.value = o;
+          rb.addEventListener("change", function () {
+            V[f.id + "__yn"] = o; tblWrap.hidden = o !== "Yes"; syncFunders();
+          });
+          l.appendChild(rb); l.appendChild(el("span", null, o)); rg2.appendChild(l);
+        });
+        var ft = el("table", "grid");
+        var fth = el("thead"), fhr = el("tr");
+        ["Funder", "Amount (USD)", "Status"].forEach(function (h) { fhr.appendChild(el("th", null, h)); });
+        fth.appendChild(fhr); ft.appendChild(fth);
+        var ftb = el("tbody");
+        frows.forEach(function (rv, i) {
+          var tr = el("tr");
+          var inn = el("input"); inn.type = "text";
+          inn.setAttribute("aria-label", "Funder " + (i + 1) + " name");
+          inn.addEventListener("input", function () { rv.n = inn.value; syncFunders(); });
+          var ina = el("input"); ina.type = "number"; ina.min = "0";
+          ina.setAttribute("aria-label", "Funder " + (i + 1) + " amount");
+          ina.addEventListener("input", function () { rv.a = ina.value; syncFunders(); });
+          var sel = el("select");
+          sel.setAttribute("aria-label", "Funder " + (i + 1) + " status");
+          ["", "confirmed", "pending"].forEach(function (s) {
+            var op = el("option", null, s || "—"); op.value = s; sel.appendChild(op);
+          });
+          sel.addEventListener("change", function () { rv.s = sel.value; syncFunders(); });
+          [inn, ina, sel].forEach(function (c) { var td = el("td"); td.appendChild(c); tr.appendChild(td); });
+          ftb.appendChild(tr);
+        });
+        ft.appendChild(ftb); tblWrap.appendChild(ft);
+        body.appendChild(rg2); body.appendChild(tblWrap);
+        break;
+      }
+      case "budget": {
+        var bw = el("div", "opts");
+        var cvals = {};
+        f.cats.forEach(function (c) {
+          var line = el("div", "bline");
+          line.appendChild(el("span", null, c));
+          var bi = el("input"); bi.type = "number"; bi.min = "0"; bi.inputMode = "decimal";
+          bi.setAttribute("aria-label", c + " (USD)");
+          bi.addEventListener("input", function () {
+            cvals[c] = bi.value;
+            V[f.id] = f.cats.map(function (k) { return cvals[k] ? k + " " + cvals[k] : null; })
+              .filter(Boolean).join(", ");
+            V[f.id + "__cats"] = f.cats.reduce(function (o, k) { o[k] = cvals[k] || ""; return o; }, {});
+            refresh();
+          });
+          line.appendChild(bi); bw.appendChild(line);
+        });
+        var bs = el("div", "bsum", "Sum: $0 — must equal G2");
+        bs.id = "bsum-" + f.id;
+        bw.appendChild(bs); body.appendChild(bw);
+        break;
+      }
+      case "safeguard": {
+        var sgf = el("input"); sgf.type = "file"; sgf.accept = ".pdf,.jpg,.jpeg,.png";
+        sgf.setAttribute("aria-label", "Policy file");
+        var sgl = el("label", "opt");
+        var sgc = el("input"); sgc.type = "checkbox";
+        sgl.appendChild(sgc);
+        sgl.appendChild(el("span", null, "A policy will be in place before funding"));
+        var sgn = el("input"); sgn.type = "text";
+        sgn.placeholder = "Name of the person responsible";
+        sgn.setAttribute("aria-label", "Person responsible");
+        var sge = el("p", "errmsg"); sge.hidden = true;
+        var updSG = function () {
+          var file = sgf.files && sgf.files[0];
+          sge.hidden = true; delete FILES[f.id];
+          if (file && (!EXT.test(file.name) || file.size > MAX_BYTES)) {
+            sge.textContent = "Use a PDF, JPG or PNG file under " + (CFG.maxFileMB || 10) + " MB.";
+            sge.hidden = false; sgf.value = ""; file = null;
+          }
+          if (file) FILES[f.id] = file;
+          var bits = [];
+          if (file) bits.push(file.name);
+          if (sgc.checked) bits.push("policy committed before funding");
+          if (sgn.value) bits.push(sgn.value);
+          V[f.id] = bits.join("; ");
+          V[f.id + "__committed"] = sgc.checked; V[f.id + "__person"] = sgn.value;
+          refresh();
+        };
+        sgf.addEventListener("change", updSG); sgc.addEventListener("change", updSG);
+        sgn.addEventListener("input", updSG);
+        body.appendChild(sgf); body.appendChild(sge); body.appendChild(sgl); body.appendChild(sgn);
+        break;
+      }
+      case "submitter": {
+        var sr = el("div", "row2");
+        var sn = reg(el("input")); sn.type = "text"; sn.placeholder = "Full name";
+        sn.autocomplete = "name";
+        sn.setAttribute("aria-label", "Name of the person submitting");
+        var sd = el("input"); sd.type = "date"; sd.valueAsDate = new Date(); sd.readOnly = true;
+        sd.setAttribute("aria-label", "Date");
+        sn.addEventListener("input", function () {
+          V[f.id] = sn.value ? sn.value + ", " + sd.value : "";
+          V[f.id + "__name"] = sn.value; V[f.id + "__date"] = sd.value;
+          refresh();
+        });
+        sr.appendChild(sn); sr.appendChild(sd); body.appendChild(sr);
+        break;
+      }
+    }
+    if (first) { first.id = first.id || "c-" + f.id; lab.htmlFor = first.id; }
+    return wrap;
+  }
+
+  /* ---------- logic ---------- */
+  function visible(f) {
+    if (!f.showIf) return true;
+    try { return !!f.showIf(V, ST); } catch (e) { return true; }
+  }
+
+  function missingIds() {
+    var out = [];
+    F.forEach(function (f) {
+      if (!f.req || !visible(f)) return;
+      var v = V[f.id];
+      if (f.req === "all") { if (!v || v.length < f.options.length) out.push(f.id); }
+      else if (typeof f.req === "number") { if (!v || v.length < f.req) out.push(f.id); }
+      else if (!v || (typeof v === "string" && !v.trim())) out.push(f.id);
+    });
+    return out;
+  }
+
+  // Extra rules a person can fix: returns { id: message }.
+  function problems() {
+    var p = {};
+    F.forEach(function (f) {
+      if (!visible(f)) return;
+      if (f.maxWords && words(V[f.id + "__summary"] != null ? V[f.id + "__summary"] : (V[f.id] || "")) > f.maxWords)
+        p[f.id] = "Please keep this answer to " + f.maxWords + " words or fewer.";
+    });
+    var g1 = num(V.G1), g2 = num(V.G2);
+    if (g1 != null && g2 != null && g2 > g1) p.G2 = "The amount requested cannot be larger than the total project budget (G1).";
+    if (V.G4 !== undefined && visible(F.filter(function (x) { return x.id === "G4"; })[0]) && g2 != null) {
+      var cats = V.G4__cats || {}, sum = 0;
+      Object.keys(cats).forEach(function (k) { sum += num(cats[k]) || 0; });
+      if (V.G4 && Math.abs(sum - g2) >= 1) p.G4 = "The categories add up to " + money(sum) + ", but the amount requested is " + money(g2) + ".";
+    }
+    var em = V.D1__email;
+    if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) p.D1 = "Enter a valid email address.";
+    return p;
+  }
+
+  function refresh() {
+    var a1 = V.A1 || "", a2 = V.A2 || "";
+    if (!a1 && !a2) ST.profile = "—";
+    else if (a1.indexOf("Individual") === 0 || a2 === "Less than 1 year") ST.profile = "Initial";
+    else ST.profile = "Established";
+
+    // G2 starts from A4 until the applicant edits it.
+    var g2in = document.getElementById("i-G2");
+    if (g2in && V.A4 && !V.__g2touched) { g2in.value = V.A4; V.G2 = V.A4; }
+
+    F.forEach(function (f) {
+      var node = document.getElementById("f-" + f.id);
+      if (!node) return;
+      node.classList.toggle("hidden", !visible(f));
+      if (f.helpFn) {
+        var h = document.getElementById("h-" + f.id);
+        if (h) h.textContent = f.helpFn(V, ST);
+      }
+    });
+
+    var bs = document.getElementById("bsum-G4");
+    if (bs) {
+      var cats = V.G4__cats || {}, sum = 0, any = false;
+      Object.keys(cats).forEach(function (k) { if (cats[k]) any = true; sum += num(cats[k]) || 0; });
+      var g2 = num(V.G2);
+      if (!any) { bs.className = "bsum"; bs.textContent = "Sum: $0 — must equal G2"; }
+      else if (g2 == null) { bs.className = "bsum"; bs.textContent = "Sum: " + money(sum) + " — enter G2 to check"; }
+      else if (Math.abs(sum - g2) < 1) { bs.className = "bsum ok"; bs.textContent = "Sum: " + money(sum) + " — matches G2"; }
+      else { bs.className = "bsum bad"; bs.textContent = "Sum: " + money(sum) + " — G2 is " + money(g2) + ", off by " + money(Math.abs(sum - g2)); }
+    }
+
+    var reqVis = F.filter(function (f) { return f.req && visible(f); });
+    var done = reqVis.length - missingIds().length;
+    document.getElementById("pfill").style.width = (reqVis.length ? Math.round(done / reqVis.length * 100) : 0) + "%";
+    document.getElementById("plabel").textContent = done + " of " + reqVis.length + " required questions answered";
+  }
+
+  /* ---------- submit ---------- */
+  function setStatus(kind, msg) {
+    status.className = "status" + (kind ? " " + kind : "");
+    status.textContent = msg || "";
+  }
+  function clearErrors() {
+    Array.prototype.forEach.call(form.querySelectorAll(".f.error"), function (n) {
+      n.classList.remove("error");
+      var m = n.querySelector(".errmsg.js"); if (m) m.remove();
+    });
+  }
+  function mark(id, msg) {
+    var n = document.getElementById("f-" + id); if (!n) return;
+    n.classList.add("error");
+    var m = el("p", "errmsg js", msg); m.setAttribute("role", "alert");
+    n.querySelector(".body").appendChild(m);
+  }
+
+  function payload() {
+    var answers = {};
+    F.forEach(function (f) {
+      if (!visible(f)) return;
+      Object.keys(V).forEach(function (k) {
+        if (k === f.id || k.indexOf(f.id + "__") === 0) answers[k] = V[k];
+      });
+    });
+    return {
+      answers: answers,
+      files: Object.keys(FILES).map(function (id) {
+        return { question: id, name: FILES[id].name, type: FILES[id].type, size: FILES[id].size };
+      }),
+      meta: { lang: navigator.language || "", submitted_from: location.origin }
+    };
+  }
+
+  function postJSON(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) { var e = new Error(j.error || "Request failed"); e.fields = j.fields; throw e; }
+          return j;
+        });
+      });
+  }
+
+  sub.addEventListener("click", function () {
+    clearErrors(); setStatus("", "");
+    var miss = missingIds(), probs = problems();
+    miss.forEach(function (id) { mark(id, "This question is required."); });
+    Object.keys(probs).forEach(function (id) { if (miss.indexOf(id) === -1) mark(id, probs[id]); });
+    var bad = F.filter(function (f) { return miss.indexOf(f.id) !== -1 || probs[f.id]; });
+    if (bad.length) {
+      setStatus("bad", bad.length + " question" + (bad.length === 1 ? " needs" : "s need") + " your attention. The first one is " + bad[0].id + ".");
+      document.getElementById("f-" + bad[0].id).scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (hpi.value) { setStatus("ok", "Thank you."); return; }      // bot: pretend success, send nothing
+    if (!CFG.endpoint) {
+      setStatus("bad", "Preview build: the form is valid, but submissions are not connected yet, so nothing was sent.");
+      return;
+    }
+    sub.disabled = true; sub.textContent = "Sending…";
+    var tsToken = window.turnstile && CFG.turnstileSiteKey ? window.turnstile.getResponse() : "";
+    var body = payload(); body.captcha = tsToken;
+    postJSON(CFG.endpoint + "/submit", body)
+      .then(function (res) {
+        var ups = (res.uploads || []).map(function (u) {
+          // Same request supabase-js sends for a signed upload URL: multipart PUT.
+          var fd = new FormData(); fd.append("cacheControl", "3600"); fd.append("", FILES[u.question]);
+          return fetch(u.url, { method: "PUT", headers: { "x-upsert": "false" }, body: fd })
+            .then(function (r) { if (!r.ok) throw new Error("A file could not be uploaded (" + u.question + ")."); });
+        });
+        return Promise.all(ups).then(function () {
+          return postJSON(CFG.endpoint + "/finalize", { application_id: res.application_id, token: res.token });
+        }).then(function () { return res; });
+      })
+      .then(function (res) {
+        setStatus("ok", "Application received. Your application ID is " + res.application_id + ". We will email you a confirmation.");
+        sub.textContent = "Submitted";
+      })
+      .catch(function (err) {
+        if (err.fields) Object.keys(err.fields).forEach(function (id) { mark(id, "Please check this answer (" + err.fields[id] + ")."); });
+        setStatus("bad", "We could not submit your application: " + err.message + " Nothing was lost on this page, please try again.");
+        sub.disabled = false; sub.textContent = "Submit application";
+      });
+  });
+
+  if (window.turnstile && CFG.turnstileSiteKey) {
+    window.turnstile.render("#captcha", { sitekey: CFG.turnstileSiteKey });
+  }
+
+  refresh();
+})();
+
+</script>
+<script>
+  /* If this page is shown inside an iframe (Wix), tell the parent its height so it never scrolls inside. */
+  (function () {
+    if (window.parent === window) return;
+    function send() { window.parent.postMessage({ type: "ga27-height", height: document.documentElement.scrollHeight }, "*"); }
+    new ResizeObserver(send).observe(document.body); window.addEventListener("load", send);
+  })();
+</script>
+</body>
+</html>

@@ -13,7 +13,7 @@
 | `--ps-gray` | `#5B6675` | Texto secundario |
 | `--ps-border` | `#C9D1DB` | Bordes de campos |
 | campos | `#F5F8FF` | Fondo de inputs |
-| `--ps-btn` | `#2F6FB3` | Botón principal |
+| `--ps-btn` | `#011B5B` | Botón principal (el botón del prototipo en Wix es `#2F6FB3`) |
 
 Tipografía: Inter. Apariencia clara, sin modo oscuro (igual que el sitio actual).
 El logo es un texto provisional: reemplazar por el archivo oficial.

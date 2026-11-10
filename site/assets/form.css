@@ -2,18 +2,18 @@
 :root { --ps-err: #B42318; --ps-ok: #0B7A55; --ps-field: #F5F8FF; }
 .progress { position: sticky; top: 0; z-index: 5; background: var(--ps-bg); padding: 12px 0 10px; margin-bottom: 18px; border-bottom: 1px solid var(--ps-border); }
 .pbar { height: 8px; border-radius: 99px; background: var(--ps-border); overflow: hidden; }
-.pfill { height: 100%; width: 0; background: var(--ps-btn); transition: width .2s; }
+.pfill { height: 100%; width: 0; background: var(--ps-coral); transition: width .2s; }
 .plabel { font-size: .85rem; color: var(--ps-gray); margin-top: 6px; }
 fieldset.sec { border: 0; background: transparent; padding: 0; margin: 0 0 40px; min-width: 0; }
 fieldset.sec > header { margin-bottom: 14px; }
-.secid { font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-gray); }
-fieldset.sec h3 { font-size: 1.35rem; margin: 2px 0 6px; }
+.secid { font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-coral); }
+fieldset.sec h3 { font-size: 1.35rem; margin: 2px 0 6px; color: var(--ps-navy); }
 .secnote { color: var(--ps-gray); margin: 0; max-width: 62ch; }
 .f { padding: 12px 0 16px; }
 .f.hidden { display: none; }
 .f > .q { display: block; font-weight: 600; margin: 0 0 4px; }
 .qid { display: inline-block; min-width: 2.4em; font-size: .78rem; font-weight: 600; color: var(--ps-gray); }
-.req-star { color: var(--ps-err); margin-left: 4px; }
+.req-star { color: var(--ps-coral); margin-left: 4px; }
 .help { color: var(--ps-gray); font-size: .9rem; margin: 0 0 8px; max-width: 70ch; }
 .help:empty { display: none; }
 .body { display: flex; flex-direction: column; gap: .5rem; }
@@ -23,7 +23,7 @@ input[type=text], input[type=email], input[type=url], input[type=tel], input[typ
 }
 textarea { min-height: 96px; resize: vertical; }
 input[type=file] { font: inherit; color: var(--ps-text); max-width: 100%; }
-input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 1px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--ps-coral); outline-offset: 1px; }
 .f.error input:not([type=checkbox]):not([type=radio]), .f.error textarea, .f.error select { border-color: var(--ps-err); }
 .errmsg { color: var(--ps-err); font-size: .88rem; font-weight: 600; margin: 4px 0 0; }
 .opts { display: grid; gap: 8px; }

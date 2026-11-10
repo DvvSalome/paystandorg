@@ -24,6 +24,9 @@ Response: `{ "application_id": "APP-2027-0001", "token": "<one-time>", "uploads"
 `{ "application_id": "...", "token": "..." }` — marks the application complete, sends the confirmation
 email with the application ID. Errors: `{ "error": "message" }` with a non-2xx status.
 
+## Implementation
+`supabase/functions/intake` + `supabase/functions/_shared/validate.js`; schema in `supabase/migrations/`.
+Setup steps: `docs/supabase-setup.md`. Client uploads each file as a multipart PUT (the request supabase-js sends).
+
 ## Not built yet
-Saving progress with a return code (the preview had it; it needs a drafts table), the Edge Function,
-the database schema and the confirmation email.
+Saving progress with a return code (needs a drafts table) and the Turnstile widget on the page.

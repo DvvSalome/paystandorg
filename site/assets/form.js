@@ -581,7 +581,12 @@
 
   function postJSON(url, body) {
     return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "Request failed"); return j; }); });
+      .then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) { var e = new Error(j.error || "Request failed"); e.fields = j.fields; throw e; }
+          return j;
+        });
+      });
   }
 
   sub.addEventListener("click", function () {
@@ -606,7 +611,9 @@
     postJSON(CFG.endpoint + "/submit", body)
       .then(function (res) {
         var ups = (res.uploads || []).map(function (u) {
-          return fetch(u.url, { method: "PUT", headers: { "Content-Type": FILES[u.question].type || "application/octet-stream" }, body: FILES[u.question] })
+          // Same request supabase-js sends for a signed upload URL: multipart PUT.
+          var fd = new FormData(); fd.append("cacheControl", "3600"); fd.append("", FILES[u.question]);
+          return fetch(u.url, { method: "PUT", headers: { "x-upsert": "false" }, body: fd })
             .then(function (r) { if (!r.ok) throw new Error("A file could not be uploaded (" + u.question + ")."); });
         });
         return Promise.all(ups).then(function () {
@@ -618,6 +625,7 @@
         sub.textContent = "Submitted";
       })
       .catch(function (err) {
+        if (err.fields) Object.keys(err.fields).forEach(function (id) { mark(id, "Please check this answer (" + err.fields[id] + ")."); });
         setStatus("bad", "We could not submit your application: " + err.message + " Nothing was lost on this page, please try again.");
         sub.disabled = false; sub.textContent = "Submit application";
       });

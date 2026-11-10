@@ -1,0 +1,6 @@
+project_id = "tdjkvnqiylwfccwbljmi"
+
+# The browser calls this function with no Supabase JWT (the new sb_publishable_ keys are not JWTs),
+# so JWT verification is off. Protection = Turnstile + rate limits + server-side validation.
+[functions.intake]
+verify_jwt = false

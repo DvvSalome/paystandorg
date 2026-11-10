@@ -1,11 +1,11 @@
-# Supabase setup (project `tdjkvnqiylwfccwbljmi`)
+# Supabase setup (project `gkaukpnmpfdpljofnlxy`)
 
 Run these from a machine with the Supabase CLI logged in (`supabase login`). Nothing here needs a key
 pasted into chat or into the repo: the function gets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from Supabase itself.
 
 ## 1. Database and storage
 ```bash
-supabase link --project-ref tdjkvnqiylwfccwbljmi
+supabase link --project-ref gkaukpnmpfdpljofnlxy
 supabase db push          # applies supabase/migrations/20261110000000_intake.sql
 ```
 (or paste that SQL file into Dashboard → SQL Editor). Creates `applications`, `application_files`,
@@ -27,7 +27,7 @@ Until `TURNSTILE_SECRET` is set the captcha check is skipped; until `RESEND_API_
 ./scripts/sync-questions.sh     # keep server and browser question definitions identical
 supabase functions deploy intake --no-verify-jwt
 ```
-Endpoint: `https://tdjkvnqiylwfccwbljmi.supabase.co/functions/v1/intake` (already in `site/assets/config.js`).
+Endpoint: `https://gkaukpnmpfdpljofnlxy.supabase.co/functions/v1/intake` (already in `site/assets/config.js`).
 
 ## 4. Check
 Open the form with `?demo=1`, press Submit. Expected: an application ID appears, a row is in

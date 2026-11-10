@@ -1,18 +1,15 @@
 /* Application form styles. Tokens come from index.html (:root). */
-:root { --ps-err: #B42318; --ps-ok: #0B7A55; --ps-field: #FFFFFF; }
-@media (prefers-color-scheme: dark) {
-  :root { --ps-err: #FF8F85; --ps-ok: #3CCF9F; --ps-field: #0D1230; }
-}
-.progress { position: sticky; top: 0; z-index: 5; background: var(--ps-light); padding: 12px 0 10px; margin-bottom: 18px; border-bottom: 1px solid var(--ps-border); }
+:root { --ps-err: #B42318; --ps-ok: #0B7A55; --ps-field: #F5F8FF; }
+.progress { position: sticky; top: 0; z-index: 5; background: var(--ps-bg); padding: 12px 0 10px; margin-bottom: 18px; border-bottom: 1px solid var(--ps-border); }
 .pbar { height: 8px; border-radius: 99px; background: var(--ps-border); overflow: hidden; }
-.pfill { height: 100%; width: 0; background: var(--ps-green); transition: width .2s; }
+.pfill { height: 100%; width: 0; background: var(--ps-btn); transition: width .2s; }
 .plabel { font-size: .85rem; color: var(--ps-gray); margin-top: 6px; }
-fieldset.sec { border: 1px solid var(--ps-border); border-radius: 12px; background: var(--ps-card); padding: 22px; margin: 0 0 18px; min-width: 0; }
+fieldset.sec { border: 0; background: transparent; padding: 0; margin: 0 0 40px; min-width: 0; }
 fieldset.sec > header { margin-bottom: 14px; }
 .secid { font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-gray); }
 fieldset.sec h3 { font-size: 1.35rem; margin: 2px 0 6px; }
 .secnote { color: var(--ps-gray); margin: 0; max-width: 62ch; }
-.f { padding: 16px 0; border-top: 1px solid var(--ps-border); }
+.f { padding: 12px 0 16px; }
 .f.hidden { display: none; }
 .f > .q { display: block; font-weight: 600; margin: 0 0 4px; }
 .qid { display: inline-block; min-width: 2.4em; font-size: .78rem; font-weight: 600; color: var(--ps-gray); }
@@ -31,7 +28,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px
 .errmsg { color: var(--ps-err); font-size: .88rem; font-weight: 600; margin: 4px 0 0; }
 .opts { display: grid; gap: 8px; }
 .opt { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
-.opt input { margin-top: .35em; width: 18px; height: 18px; flex: none; accent-color: var(--ps-green); }
+.opt input { margin-top: .35em; width: 18px; height: 18px; flex: none; accent-color: var(--ps-btn); }
 .opt.boxed { border: 1px solid var(--ps-border); border-radius: 8px; padding: 10px 12px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -52,7 +49,7 @@ table.grid td { padding: 4px 6px; }
 .bsum.ok { color: var(--ps-ok); } .bsum.bad { color: var(--ps-err); }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .submitbar { display: grid; gap: 12px; justify-items: start; margin-top: 8px; }
-button.submit { font: inherit; font-weight: 700; background: var(--ps-green); color: var(--ps-dark); border: 0; border-radius: 8px; padding: 14px 28px; cursor: pointer; }
+button.submit { font: inherit; font-weight: 700; background: var(--ps-btn); color: #fff; border: 0; border-radius: 6px; padding: 14px 28px; font-size: 1.05rem; cursor: pointer; }
 button.submit:disabled { opacity: .6; cursor: wait; }
 button.submit:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 3px; }
 .status { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--ps-border); max-width: 70ch; }
@@ -61,7 +58,6 @@ button.submit:focus-visible { outline: 3px solid var(--ps-blue); outline-offset:
 .status:empty { display: none; }
 @media (max-width: 560px) {
   .row2, .row3 { grid-template-columns: 1fr; }
-  fieldset.sec { padding: 16px; }
   .bline { grid-template-columns: 1fr 110px; }
 }
 @media (prefers-reduced-motion: reduce) { .pfill { transition: none; } }

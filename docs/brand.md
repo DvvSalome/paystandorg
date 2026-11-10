@@ -1,26 +1,22 @@
 # Paystand Impact Foundation — diseño (provisional)
 
-> Fuente: paleta y tipografía usadas en los documentos técnicos de Eva (nov 2026).
-> No es el manual de marca oficial. Reemplazar por los valores oficiales cuando
+> Fuente: capturas de la página en Wix. No es el manual de marca oficial. Reemplazar por los valores oficiales cuando
 > Lesly o Marisa los entreguen (logo, colores, tipografías).
 
-## Colores
+## Colores (muestreados de la página de paystand.org en Wix, 10 nov 2026)
 | Token | Valor | Uso |
 |---|---|---|
-| `--ps-green` | `#00C896` | Acento principal, botones, énfasis |
-| `--ps-dark` | `#0A0E27` | Fondo oscuro, texto de títulos |
-| `--ps-blue` | `#3B82F6` | Enlaces, información |
-| `--ps-orange` | `#F59E0B` | Advertencias |
-| `--ps-red` | `#EF4444` | Errores |
-| `--ps-gray` | `#64748B` | Texto secundario |
-| `--ps-light` | `#F1F5F9` | Fondos claros |
-| `--ps-border` | `#E2E8F0` | Bordes |
+| `--ps-navy` | `#011B5B` | Header y footer |
+| `--ps-coral` | `#E4714D` | ".org" del logo |
+| `--ps-bg` | `#ECF1FD` | Fondo de la página |
+| `--ps-text` | `#1F2C3E` | Texto principal |
+| `--ps-gray` | `#5B6675` | Texto secundario |
+| `--ps-border` | `#C9D1DB` | Bordes de campos |
+| campos | `#F5F8FF` | Fondo de inputs |
+| `--ps-btn` | `#2F6FB3` | Botón principal |
 
-Degradado de portada: `#0A0E27 → #1A1F3A → #0A0E27` (135°).
-
-## Tipografía
-Inter (texto y títulos), con fallback `-apple-system, Segoe UI, Roboto, sans-serif`.
-Monoespaciada para código: JetBrains Mono.
+Tipografía: Inter. Apariencia clara, sin modo oscuro (igual que el sitio actual).
+El logo es un texto provisional: reemplazar por el archivo oficial.
 
 ## Reglas de uso
 - Texto de apoyo en gris `#64748B`, nunca más claro que el fondo permita (contraste AA).

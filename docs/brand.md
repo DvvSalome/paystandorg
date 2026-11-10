@@ -1,4 +1,4 @@
-# Paystand Foundation — diseño (provisional)
+# Paystand Impact Foundation — diseño (provisional)
 
 > Fuente: paleta y tipografía usadas en los documentos técnicos de Eva (nov 2026).
 > No es el manual de marca oficial. Reemplazar por los valores oficiales cuando

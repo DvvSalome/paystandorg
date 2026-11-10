@@ -64,6 +64,7 @@
   footer { padding: 32px 0 48px; color: var(--ps-gray); font-size: .9rem; border-top: 1px solid var(--ps-border); }
   footer a { margin-right: 18px; }
 </style>
+<link rel="stylesheet" href="assets/form.css">
 </head>
 <body>
 
@@ -120,12 +121,12 @@
   <section id="apply" class="apply">
     <div class="wrap">
       <h2>Apply</h2>
-      <p class="sub">Dates to be confirmed.</p>
-      <div class="card">
-        <h3>Application form</h3>
-        <!-- TODO: insertar el formulario completo (secciones 0 a K) cuando se reciba el documento de preguntas -->
-        <p>The application form will appear here.</p>
+      <p class="sub">Please complete all required fields. You may answer in English, Spanish or Portuguese. Dates to be confirmed.</p>
+      <div class="progress" aria-live="polite">
+        <div class="pbar"><div class="pfill" id="pfill"></div></div>
+        <div class="plabel" id="plabel">0 of 0 required questions answered</div>
       </div>
+      <form id="form" novalidate autocomplete="on"></form>
     </div>
   </section>
 </main>
@@ -138,5 +139,8 @@
   </div>
 </footer>
 
+<script src="assets/config.js"></script>
+<script src="assets/questions.js"></script>
+<script src="assets/form.js"></script>
 </body>
 </html>

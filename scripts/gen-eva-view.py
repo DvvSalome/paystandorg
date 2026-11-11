@@ -27,11 +27,12 @@ language sql immutable as $$
   end
 $$;
 
-create or replace view intake_rows with (security_invoker = true) as
+drop view if exists intake_rows;   -- columns changed since the first version; replace cannot rename them
+create view intake_rows with (security_invoker = true) as
 select
   a.application_id,
-  date_trunc('second', a.finalized_at) as created_at,
-  date_trunc('second', a.finalized_at) as "{m['timestamp']}",
+  date_trunc('second', a.finalized_at) as finalized_at,   -- filter/order column: set ingest.supabase.timestamp_column = "finalized_at"
+  to_char(a.finalized_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "{m['timestamp']}",   -- the ISO format Eva recommended
 {(","+chr(10)).join(cols)}
 from applications a
 where a.status = 'complete'

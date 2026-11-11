@@ -10,11 +10,12 @@ language sql immutable as $$
   end
 $$;
 
-create or replace view intake_rows with (security_invoker = true) as
+drop view if exists intake_rows;   -- columns changed since the first version; replace cannot rename them
+create view intake_rows with (security_invoker = true) as
 select
   a.application_id,
-  date_trunc('second', a.finalized_at) as created_at,
-  date_trunc('second', a.finalized_at) as "Timestamp",
+  date_trunc('second', a.finalized_at) as finalized_at,   -- filter/order column: set ingest.supabase.timestamp_column = "finalized_at"
+  to_char(a.finalized_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "Timestamp",   -- the ISO format Eva recommended
   intake_text(a.answers, '0.1') as "Q01_Readiness_Checklist",
   intake_text(a.answers, '0.2') as "Q02_Eligibility_Checklist",
   intake_text(a.answers, 'A1') as "A1_Applicant_Type",

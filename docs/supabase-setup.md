@@ -6,9 +6,9 @@ pasted into chat or into the repo: the function gets `SUPABASE_URL` and `SUPABAS
 ## 1. Database and storage
 ```bash
 supabase link --project-ref gkaukpnmpfdpljofnlxy
-supabase db push          # applies supabase/migrations/20261110000000_intake.sql
+supabase db push          # applies both files in supabase/migrations/ (schema, then Eva's view intake_rows)
 ```
-(or paste that SQL file into Dashboard → SQL Editor). Creates `applications`, `application_files`,
+(or paste each SQL file, in order, into Dashboard → SQL Editor). Creates `applications`, `application_files`,
 `rate_events`, the `APP-2027-####` sequence and the private `applications` bucket. RLS is on with no
 policies, so the browser can never read or write these tables directly.
 

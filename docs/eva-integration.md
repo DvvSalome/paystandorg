@@ -40,6 +40,10 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 }
 ```
 
+## Estado del lado de Iván (2026-11-12)
+- Hecho según Iván: 1) token de Google, 3) config de ingest, 5) carpetas de prueba borradas. Falta verificar con Eva que el token refresca.
+- Pendiente: 2) archivo con la clave de servicio de Supabase, 4) parche de documentos.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

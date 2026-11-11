@@ -1,0 +1,18 @@
+{
+  "_source": "QUESTION_MAP of intake_pipeline.py v3 on Eva's server, copied 2026-11-11. K4 name assumed: the message arrived split.",
+  "timestamp": "Timestamp",
+  "map": [
+    ["0.1","Q01_Readiness_Checklist"],["0.2","Q02_Eligibility_Checklist"],
+    ["A1","A1_Applicant_Type"],["A1b","A1b_Org_Type"],["A2","A2_Time_Operating"],["A3","A3_Prior_Grant"],["A4","A4_Requested_Amount"],
+    ["B1","B1_Legal_Name"],["B2","B2_Country"],["B3","B3_Legal_Rep_Name"],["B4","B4_Address"],["B5","B5_Annual_Budget"],["B6","B6_Website"],["B7","B7_FTE_Staff"],["B8","B8_Registration_Number"],
+    ["C1","C1_Registration_Doc"],["C2","C2_Tax_Form"],["C3","C3_Person_Registration_Info"],
+    ["D1","D1_Primary_Contact"],["D2","D2_Contact_Authorized"],["D3","D3_Signer"],["D4","D4_Copy_Email"],
+    ["E1","E1_Project_Title_Summary"],["E2","E2_Dates"],["E3","E3_Location"],["E4","E4_Economic_Barrier"],["E5","E5_Participant_Count"],["E6","E6_Participant_Profile"],["E7","E7_Primary_Result"],["E8","E8_Application_Partner"],["E9","E9_Bitcoin_Uses"],["E10","E10_Milestones"],["E11","E11_Risks"],["E12","E12_Target_Stage"],["E13","E13_Value_Circulation"],
+    ["F1","F1_Main_Measure"],["F2","F2_Baseline"],["F3","F3_Target_12mo"],["F4","F4_Verification"],["F5","F5_Prior_Results"],
+    ["G1","G1_Total_Budget"],["G2","G2_Requested_Amount"],["G3","G3_Other_Funders"],["G4","G4_Budget_By_Category"],["G5","G5_Fund_Uses"],["G7","G7_Continuity"],["G8","G8_Payment_Method"],
+    ["H1","H1_Team_Capacity"],["H2","H2_Support_Needs"],
+    ["I1","I1_Children_Involved"],["I2","I2_Safeguarding_Policy"],["I3","I3_Participant_Data"],
+    ["J1","J1_Renewal_Results"],["J2","J2_Stage_Reached_2026"],["J3","J3_Report_2026"],
+    ["K1","K1_Disclosures"],["K2","K2_Disclosure_Details"],["K3","K3_Certification"],["K4","K4_Data_Consent"],["K5","K5_Submitter"]
+  ]
+}

@@ -45,6 +45,12 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 - 2) clave de servicio: Iván la tomó del proyecto y la puso (2026-11-12). Falta su prueba con curl (debe dar 200).
 - Pendiente: 4) parche de documentos (`storage_download.py`).
 
+## Verificado contra el Supabase real (2026-11-12)
+- Envío completo desde el formulario (datos ficticios "(DEMO)"): `submit` 200, subida de 2 archivos a Storage 200, `finalize` 200 (comprueba que los archivos existen). ID asignado: `APP-2027-0002`.
+- Con la clave pública: `applications` y `application_files` responden `[]` (RLS bloquea), pero **`next_application_id()` era ejecutable por cualquiera** (gastó el `APP-2027-0001`). La migración `20261112000000_eva_view.sql` lo cierra: **aún no está aplicada** (la vista `intake_rows` da 404).
+- El token de Supabase guardado en el entorno de Claude solo permite lo que Supabase le concedió: le faltan `database_read` y `edge_functions_read`, así que las migraciones se aplican desde el panel (SQL Editor) o con la CLI.
+- Limpieza pendiente tras las pruebas: borrar la aplicación `APP-2027-0002` y sus archivos de Storage, vaciar `rate_events`, y `alter sequence application_seq restart with 1;`.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

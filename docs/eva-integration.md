@@ -42,7 +42,8 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 
 ## Estado del lado de Iván (2026-11-12)
 - Hecho según Iván: 1) token de Google, 3) config de ingest, 5) carpetas de prueba borradas. Falta verificar con Eva que el token refresca.
-- Pendiente: 2) archivo con la clave de servicio de Supabase, 4) parche de documentos.
+- 2) clave de servicio: Iván la tomó del proyecto y la puso (2026-11-12). Falta su prueba con curl (debe dar 200).
+- Pendiente: 4) parche de documentos (`storage_download.py`).
 
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.

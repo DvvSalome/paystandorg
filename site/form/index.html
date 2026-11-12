@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grant Application 2027 — Paystand Impact Foundation</title>
+<meta name="description" content="Apply for a 2027 Paystand Impact Foundation grant.">
+<link rel="stylesheet" href="../assets/form.css">
+<style>
+  @font-face { font-family: 'GA27 Body'; src: url('../assets/fonts/body.woff2') format('woff2'); font-weight: 300 700; font-display: swap; }
+  @font-face { font-family: 'GA27 Head'; src: url('../assets/fonts/heading.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+  /* Palette sampled from the paystand.org page in Wix (see docs/brand.md) */
+  :root {
+    --ps-navy: #011B5B;
+    --ps-coral: #E4714D;
+    --ps-bg: #ECF1FD;
+    --ps-card: #FFFFFF;
+    --ps-light: #E3EAF8;
+    --ps-border: #C9D1DB;
+    --ps-text: #1F2C3E;
+    --ps-gray: #5B6675;
+    --ps-btn: #011B5B;
+    --ps-blue: #2F6FB3;
+    --ps-link: #1D4ED8;
+    --font: 'GA27 Body', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-head: 'GA27 Head', 'GA27 Body', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); color: var(--ps-text); background: var(--ps-bg); line-height: 1.55; }
+  a { color: var(--ps-link); }
+  .wrap { max-width: 820px; margin: 0 auto; padding-inline: max(20px, env(safe-area-inset-left)); }
+  main { padding: 0 0 40px; }
+  .banner { background: var(--ps-navy); color: #fff; padding: 36px 0 32px; margin-bottom: 28px; border-bottom: 4px solid var(--ps-coral); }
+  .kicker { margin: 0 0 6px; font-size: .85rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ps-coral); }
+  .banner h1 { font-size: clamp(1.7rem, 4vw, 2.2rem); line-height: 1.15; margin: 0 0 8px; color: #fff; }
+  .banner .lead { color: #D5DCF0; margin: 0; max-width: 62ch; }
+  .banner h1, fieldset.sec h3 { font-family: var(--font-head); font-weight: 400; }
+  /* Inside the paystand.org page: same look as its cards and pill buttons */
+  html.embed { --ps-coral: #FF6A2F; --ps-btn: #FF6A2F; --ps-text: #001B5B; --ps-gray: #4F5F7F; --ps-border: #C9D4E3; }
+  html.embed, html.embed body { background: transparent; }
+  html.embed .banner { display: none; }
+  html.embed main { padding-top: 0; }
+  html.embed .progress { position: static; background: transparent; border: 0; padding-top: 0; }
+  html.embed fieldset.sec { background: #FAFCFE; border-radius: 24px; box-shadow: 0 4px 24px rgba(0, 27, 91, .08); padding: 32px; margin: 0 0 24px; }
+  html.embed fieldset.sec h3 { color: #001B5B; font-size: 1.6rem; }
+  html.embed button.submit { background: #FF6A2F; color: #001B5B; border-radius: 999px; padding: 14px 40px; font-size: 1rem; }
+  @media (max-width: 560px) { html.embed fieldset.sec { padding: 20px; border-radius: 18px; } }
+  a:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<script>if (/[?&]embed=1\b/.test(location.search)) document.documentElement.classList.add("embed");</script>
+
+<main>
+  <div class="banner"><div class="wrap">
+    <p class="kicker">Paystand Impact Foundation</p>
+    <h1>Grant Application 2027</h1>
+    <p class="lead">Please complete all required fields. You may answer in English, Spanish or Portuguese.</p>
+  </div></div>
+  <div class="wrap">
+    <div class="progress" aria-live="polite">
+      <div class="pbar"><div class="pfill" id="pfill"></div></div>
+      <div class="plabel" id="plabel">0 of 0 required questions answered</div>
+    </div>
+    <form id="form" novalidate autocomplete="on"></form>
+  </div>
+</main>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/questions.js"></script>
+<script src="../assets/form.js"></script>
+<script>
+  /* If this page is shown inside an iframe (Wix), tell the parent its height so it never scrolls inside. */
+  (function () {
+    if (window.parent === window) return;
+    function send() { window.parent.postMessage({ type: "ga27-height", height: document.documentElement.scrollHeight }, "*"); }
+    new ResizeObserver(send).observe(document.body); window.addEventListener("load", send);
+  })();
+  /* ?demo=1 fills the form with fictitious data (design review only). */
+  if (/[?&]demo=1\b/.test(location.search)) {
+    var d = document.createElement("script"); d.src = "../assets/demo.js"; document.body.appendChild(d);
+  }
+</script>
+</body>
+</html>

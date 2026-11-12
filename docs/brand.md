@@ -28,3 +28,7 @@ El logo es un texto provisional: reemplazar por el archivo oficial.
 - Logo y variantes (claro/oscuro).
 - Colores y tipografías oficiales de paystand.org.
 - Textos legales: enlaces a `paystand.org/grants-terms-and-conditions` y política de privacidad de la fundación.
+
+## Colores reales del sitio (leídos de paystand.org, 2026-11-12)
+Azul marino `#001B5B` (títulos, header, pie) · naranja `#FF6A2F` (botones, acentos) · fondo `#F5F8FA` · tarjetas `#FAFCFE`.
+Tipografía: Space Grotesk para el texto y la fuente de títulos del sitio (`site/assets/fonts/`). El formulario incrustado usa estos valores.

@@ -59,6 +59,17 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 - `regression_tests.py --all`: 130 OK / 11 fallos, igual antes y después del parche. Fallos: `KeyError 'B9'` (suite cleaning), 3 de scoring (puntajes ~16 en vez de >=90), 1 de config (B9), 1 de errors (app perfecta puntúa 14). `scoring_verify.py` fixtures: 5/5.
 - Por aclarar antes de procesar solicitantes reales: si `B9` y otros IDs viejos aún se usan en el CÓDIGO del pipeline (no solo en las pruebas) y por qué una app perfecta puntúa tan bajo.
 
+## Verificado por Eva (2026-11-12, solo lectura)
+- Vista `intake_rows` leída con la clave del servidor: HTTP 200, 2 filas, 63 columnas con los nombres del QUESTION_MAP.
+- Ruta de lectura del propio pipeline (`fetch_supabase_rows`): 63 columnas, 2 filas, valores bien ubicados; `Timestamp` normaliza a `2026-11-12T16:52:34Z`; `C1_Registration_Doc` llega como `storage:...`.
+- Config `ingest` (Iván): `source: supabase`, `table: intake_rows`, `timestamp_column: finalized_at`, `fallback_to_sheets: false`, clave en archivo.
+- `KeyError 'B9'` y los puntajes bajos vienen de `regression_tests.py` (fixtures con IDs v2); el código del pipeline ya trata B9/E14/E15 como eliminados. `scoring_verify.py` 5/5.
+- Hallazgos para el lanzamiento:
+  - **Un solo watermark** (`cache/intake_watermark.json`) para test y production, y los dos ambientes leen la misma tabla de Supabase: no correr `--environment test` con aplicaciones reales; idealmente un watermark por ambiente.
+  - `send_slack_notification` avisa a `#foundation-ops` (8-10 sitios, sin opción para apagarlo). Para ensayos: poner un `openclaw` falso primero en el PATH (sale con código 1 y el pipeline cae a stderr).
+  - `step_ingest` crea carpeta `GR-2027-xxx` en Drive y filas en "0. Grantee Registry"; `step_clean` reescribe `scripts/data/grantee_registry.json`; `step_ingest` actualiza "1. Form Responses" (línea ~908, revisar que no escriba filas arbitrarias con la fuente Supabase).
+  - La carpeta de pruebas `1Kb-uzMvjUhlqQS7bcAoF8FyW342guovz` NO es accesible con el token de Eva (404): es de otra cuenta. No hay modo dry-run.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

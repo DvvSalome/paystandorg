@@ -70,6 +70,15 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
   - `step_ingest` crea carpeta `GR-2027-xxx` en Drive y filas en "0. Grantee Registry"; `step_clean` reescribe `scripts/data/grantee_registry.json`; `step_ingest` actualiza "1. Form Responses" (línea ~908, revisar que no escriba filas arbitrarias con la fuente Supabase).
   - La carpeta de pruebas `1Kb-uzMvjUhlqQS7bcAoF8FyW342guovz` NO es accesible con el token de Eva (404): es de otra cuenta. No hay modo dry-run.
 
+## Ensayo del pipeline con datos de Supabase (2026-11-12, ambiente TEST, run 20261112-202123)
+- 7/7 pasos OK con las 2 aplicaciones demo (`APP-2027-0002` y `0003`): los IDs del formulario se respetaron; 5 pestañas escritas de forma atómica, dashboard de 26 métricas, 6 filas de log.
+- Resultado: perfil Establecida, pilar Economic Empowerment, **score 85/93 (normalizado 91,4), semáforo VERDE**. Dependencia 23,5 % (= 20.000 / 85.000: confirma que A4/G2 y B5 llegan a los campos correctos).
+- Flags esperados: `duplicate_name` (mismo nombre y correo en las 2 demo), `doc_text_extraction_failed` (el PDF demo es falso), `name_mismatch`/`address_mismatch` en PENDING. `cost_per_participant` diferido (faltan 3 valores para la mediana).
+- A revisar: ambas demo se emparejaron con el grantee histórico `GR-2026-015` (posible falso positivo del emparejamiento difuso; no se creó carpeta nueva en Drive porque el paso la crea solo para solicitantes NUEVOS).
+- PyMuPDF no está instalado en el `.venv`: la extracción de texto cae a pdftotext/tesseract. Falta probar con un PDF real.
+- El ensayo dejó: filas de prueba en las pestañas 2-6 y 8 del Sheet TEST, `cache/intake_watermark.json` nuevo (antes no existía), carpeta vacía "ENSAYO intake 2027 (borrar)" en la raíz de Eva, `cache/noop-bin/openclaw` (silencia Slack en ensayos). Config y registry restaurados (`cmp` idénticos).
+- **No activar el cron de producción antes de borrar las aplicaciones demo de Supabase**: se procesarían como reales.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

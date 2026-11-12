@@ -52,6 +52,13 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 - El token de Supabase guardado en el entorno de Claude solo permite lo que Supabase le concedió: le faltan `database_read` y `edge_functions_read`, así que las migraciones se aplican desde el panel (SQL Editor) o con la CLI.
 - Limpieza pendiente tras las pruebas: borrar la aplicación `APP-2027-0002` y sus archivos de Storage, vaciar `rate_events`, y `alter sequence application_seq restart with 1;`.
 
+## Aplicado en el servidor de Eva (2026-11-12)
+- Línea 990: `@with_retry(max_attempts=3)` -> `@with_retry` (el decorador no acepta argumentos; el pipeline no se podía importar).
+- Parche de C1 aplicado en `step_flag`. Respaldo: `scripts/intake_pipeline.py.bak-2026-11-12`.
+- Prueba real: `download_supabase_doc('storage:APP-2027-0002/C1-demo-registro-y-estatus.pdf')` -> `13 application/pdf b'%PDF-1.4'`.
+- `regression_tests.py --all`: 130 OK / 11 fallos, igual antes y después del parche. Fallos: `KeyError 'B9'` (suite cleaning), 3 de scoring (puntajes ~16 en vez de >=90), 1 de config (B9), 1 de errors (app perfecta puntúa 14). `scoring_verify.py` fixtures: 5/5.
+- Por aclarar antes de procesar solicitantes reales: si `B9` y otros IDs viejos aún se usan en el CÓDIGO del pipeline (no solo en las pruebas) y por qué una app perfecta puntúa tan bajo.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

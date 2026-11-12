@@ -23,7 +23,7 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
   - documentos C1, C2, J3 como `storage:<ruta>`.
   - Bloquea el acceso con la clave pública (anon/authenticated) a tablas, vista, contador y funciones.
   - Probada en Postgres 16: 63 columnas, filtros, permisos, y aplicar la versión nueva encima de la anterior.
-- **Parche de documentos:** `supabase/eva_patches/storage_download.py` (+ prueba). Descarga `storage:<ruta>` desde Supabase Storage con la clave de servicio.
+- **Parche de documentos:** `supabase/eva_patches/` (`pipeline_c1_storage.py`, `README.md`, prueba). Hace que el bloque de C1 (línea ~3021) descargue `storage:<ruta>` desde Supabase Storage. Se aplica a mano en el pipeline: dos líneas cambian y se pega una función.
 - Descartado: `supabase_source.py` (módulo propio de lectura). Duplicaba `fetch_supabase_rows`.
 
 ## Configuración que debe poner Iván (`scripts/data/intake_sheets_config.json`)
@@ -43,7 +43,8 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 ## Estado del lado de Iván (2026-11-12)
 - Hecho según Iván: 1) token de Google, 3) config de ingest, 5) carpetas de prueba borradas. Falta verificar con Eva que el token refresca.
 - 2) clave de servicio: Iván la tomó del proyecto y la puso (2026-11-12). Falta su prueba con curl (debe dar 200).
-- Pendiente: 4) parche de documentos (`storage_download.py`).
+- Eva probó la clave del archivo `secrets/supabase_service_key.txt`: `applications` responde 200.
+- Pendiente: 4) parche de documentos (`supabase/eva_patches/README.md`); aplicarlo en una copia con respaldo.
 
 ## Verificado contra el Supabase real (2026-11-12)
 - Envío completo desde el formulario (datos ficticios "(DEMO)"): `submit` 200, subida de 2 archivos a Storage 200, `finalize` 200 (comprueba que los archivos existen). ID asignado: `APP-2027-0002`.

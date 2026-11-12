@@ -8,7 +8,7 @@ Context for any Claude session working in this repo. Keep it short and current.
   - Test params: `?noform=1` hides our section (for pixel comparison with the live page), `?demo=1` fills fictitious data.
 - `site/form/index.html`: the application form page (60 questions, v3 IDs). Opened standalone it has its own banner; with `?embed=1` it drops the banner and uses the site's look. Questions: `site/assets/questions.js`; engine: `site/assets/form.js`. Fonts are self-hosted in `site/assets/fonts/`.
 - `dist/form.html`: the form as one file with fonts inlined (`python3 scripts/build-single.py`). `dist/intake-function.ts`: the Edge Function as one file for the Supabase dashboard (`scripts/build-function-single.py`).
-- `supabase/`: schema (`migrations/`), Edge Function `intake` (receives submissions), the view Eva reads (`intake_rows`), patches for Eva's pipeline (`eva_patches/`).
+- `supabase/`: schema (`migrations/`), Edge Function `intake` (receives submissions), the view Eva reads (`intake_rows`), the patch for Eva's pipeline C1 download (`eva_patches/`).
 - Deployed: Vercel project `paystand-grant-form` (https://paystand-grant-form.vercel.app, still behind Vercel login), serving `site/`. Supabase project `gkaukpnmpfdpljofnlxy`.
 
 ## Flow

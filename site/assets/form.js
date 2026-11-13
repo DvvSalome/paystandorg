@@ -621,7 +621,7 @@
         }).then(function () { return res; });
       })
       .then(function (res) {
-        setStatus("ok", "Application received. Your application ID is " + res.application_id + ". We will email you a confirmation.");
+        setStatus("ok", "Application received. Your application ID is " + res.application_id + ". Please keep it for your records.");
         sub.textContent = "Submitted";
       })
       .catch(function (err) {

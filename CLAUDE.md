@@ -18,7 +18,7 @@ Form (Vercel) → Edge Function `intake` → Supabase (`applications`, `applicat
 - Eva pre-classifies, never decides. The form never mentions scoring.
 - Question IDs are v3 (61-entry QUESTION_MAP incl. timestamp). 17 IDs changed meaning vs the 5-Nov draft: never map by old meaning. Source of truth for column names: `supabase/eva_question_map.json`; regenerate the view with `python3 scripts/gen-eva-view.py`, never edit it by hand.
 - Secrets never go in the repo, chat or `config.js`: the service_role key lives only in Supabase and in a chmod-600 key file on Eva's server.
-- After editing `site/assets/questions.js`, run `scripts/sync-questions.sh` so the Edge Function validates the same questions.
+- After editing `site/assets/questions.js`, run `scripts/sync-questions.sh` **and** `python3 scripts/build-function-single.py`: the browser, the Edge Function and `dist/` each hold a copy, and a stale one means the server rejects what the form accepted, with no useful message. `node tests/questions.test.mjs` fails if they drift — it also pins the question count at 60 and keeps the eligibility path open (0.2 must not require all four boxes; K2 carries the explanation instead). CI runs it on every push.
 - Eva's server is changed by Iván (approves technical changes). Eva cannot receive files over Telegram; code is pasted as text. Her replies cut off around 8k tokens: ask for one piece per message.
 
 ## Before going public

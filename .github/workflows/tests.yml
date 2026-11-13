@@ -1,0 +1,42 @@
+name: tests
+
+# The question definitions exist in three copies — the browser's, the Edge
+# Function's, and the built bundle — and they have already drifted once. A
+# test that only runs when someone remembers to run it would not have caught
+# it, so it runs here on every push and pull request.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Question definitions — copies agree, eligibility path open
+        run: node tests/questions.test.mjs
+
+      - name: Drafts — save and resume
+        run: node tests/drafts.test.mjs
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # These two guard patches that are applied by hand on Eva's server, so
+      # the only place their behaviour is pinned is here.
+      - name: match_grantee — accented names do not collide
+        run: python3 supabase/eva_patches/test_match_grantee_accents.py
+
+      - name: C1 documents — Supabase Storage download
+        run: python3 supabase/eva_patches/test_pipeline_c1_storage.py

@@ -44,8 +44,6 @@ from pathlib import Path
 import subprocess
 
 # Google API
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -507,38 +505,35 @@ OFAC_CACHE_TTL = 604800  # 7 days in seconds (weekly refresh)
 
 # ─── Google API helpers ────────────────────────────────────────────────────
 
-def get_credentials():
-    """Load and refresh Google OAuth credentials."""
-    with open(SECRETS_PATH) as f:
-        td = json.load(f)
-    creds = Credentials(
-        token=td['token'],
-        refresh_token=td['refresh_token'],
-        token_uri='https://oauth2.googleapis.com/token',
-        client_id=td.get('client_id'),
-        client_secret=td['client_secret'],
-        scopes=td.get('scopes', [
-            'https://www.googleapis.com/auth/drive',
-            'https://www.googleapis.com/auth/spreadsheets'
-        ])
-    )
-    if creds.expired:
-        creds.refresh(Request())
-        td['token'] = creds.token
-        td['expiry'] = creds.expiry.isoformat() if creds.expiry else None
-        with open(SECRETS_PATH, 'w') as f:
-            json.dump(td, f, indent=2)
-    return creds
-
-
-def get_sheets_service():
-    creds = get_credentials()
-    return build('sheets', 'v4', credentials=creds)
-
-
-def get_drive_service():
-    creds = get_credentials()
-    return build('drive', 'v3', credentials=creds)
+# ── Autenticación con Google ──────────────────────────────────────────────
+#
+# Vive en scripts/google_auth.py, no aquí. Eva lo centralizó el 2026-11-13
+# porque nueve scripts tenían cada uno su propia copia de get_credentials, y
+# una copia divergente de la lógica de credenciales es como se llega a un
+# token que nunca se refresca.
+#
+# Ese módulo fija los scopes (drive + spreadsheets completos) y decide el
+# refresh con una cadena OR que NO depende de `creds.expired`:
+#
+#     needs_refresh = (not creds.token or creds.expired
+#                      or stored_expiry is None or _is_expired(stored_expiry))
+#
+# Es más defensivo que confiar en la propiedad de la librería: `expired`
+# devuelve False cuando el objeto se construyó sin `expiry`, y entonces
+# nunca refresca. Aquí ese término puede ser False sin consecuencia porque
+# _is_expired() parsea el string guardado y cubre el caso.
+#
+# Pendiente de una línea en google_auth.py, no aquí: pasarle `expiry=` al
+# constructor de Credentials. Sin eso, `creds.expired` queda en False de
+# forma permanente y google-auth tampoco auto-refresca a media corrida —
+# `valid` es `token and not expired`, así que la librería cree que el token
+# sirve hasta que Google responde 401. El arranque ya está cubierto; lo que
+# falta es que el token venza DURANTE un lote largo.
+from google_auth import (          # noqa: E402
+    get_credentials,
+    get_sheets_service,
+    get_drive_service,
+)
 
 
 @with_retry

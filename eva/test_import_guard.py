@@ -88,6 +88,24 @@ def install_google_stubs():
     for name, mod in mods.items():
         sys.modules.setdefault(name, mod)
 
+    # google_auth.py vive en scripts/ del servidor de Eva, no en este repo:
+    # centraliza las credenciales para los nueve scripts. Se simula con la
+    # misma superficie pública para que el pipeline importe aquí igual que
+    # allá. Si alguien le agrega una función al módulo y el pipeline la usa,
+    # esta prueba falla con un ImportError claro en vez de hacerlo en el
+    # servidor a media corrida.
+    if "google_auth" not in sys.modules:
+        ga = types.ModuleType("google_auth")
+        ga.FIXED_SCOPES = [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets",
+        ]
+        ga.get_credentials = lambda *a, **k: None
+        ga.get_sheets_service = lambda *a, **k: None
+        ga.get_drive_service = lambda *a, **k: None
+        ga.get_access_token = lambda *a, **k: ""
+        sys.modules["google_auth"] = ga
+
 
 def main():
     print("=" * 68)

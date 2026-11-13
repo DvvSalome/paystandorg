@@ -79,6 +79,11 @@ Elegida por Salome el 2026-11-11. Implementación sin tocar el pipeline salvo lo
 - El ensayo dejó: filas de prueba en las pestañas 2-6 y 8 del Sheet TEST, `cache/intake_watermark.json` nuevo (antes no existía), carpeta vacía "ENSAYO intake 2027 (borrar)" en la raíz de Eva, `cache/noop-bin/openclaw` (silencia Slack en ensayos). Config y registry restaurados (`cmp` idénticos).
 - **No activar el cron de producción antes de borrar las aplicaciones demo de Supabase**: se procesarían como reales.
 
+## Bug encontrado en `match_grantee` (2026-11-13) y verificaciones de PROD
+- Los encabezados de las pestañas 2, 3, 4, 5, 6 y 8 del Sheet PROD coinciden exactamente con los de TEST (28/13/20/22/15/19 columnas): el paso de escritura no debería fallar en producción.
+- **Bug (nivel 4 del emparejamiento por país):** los tokens se sacan con `re.findall(r'[a-z0-9]+', nombre.lower())`, que parte cada letra con tilde: "Fundación" -> `fundaci` + `n`. Como `domain_common` solo tiene `fundacion`, dos organizaciones del mismo país cuyos nombres tengan una palabra con tilde ("Fundación", "Asociación", "Medellín"...) comparten 2 tokens y se emparejan: una organización NUEVA se trata como un grantee existente (reusa su GR-id, no se crea carpeta, hereda datos del registro). Explica por qué las demo se emparejaron con `GR-2026-015`.
+- Arreglo (probado, `supabase/eva_patches/match_grantee_accents.py` y su prueba): normalizar tildes antes de tokenizar y descartar tokens de menos de 3 letras. Aplicar en el pipeline con respaldo y OK de Iván.
+
 ## Bloqueos y riesgos abiertos
 1. **Token de Google roto** (`invalid_scope` al refrescar). Sin él falla el paso 1 (carpetas en Drive) y la escritura de resultados. Hipótesis: el código pide un scope que el token no tiene. Lo arregla Iván.
 2. **El paso 1 crea carpetas y filas de registro para cualquier envío**, incluso basura o pruebas. Si el pipeline falla después y se reintenta, el solicitante podría quedar marcado como grantee existente (por confirmar en `match_grantee`).

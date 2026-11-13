@@ -1,6 +1,7 @@
 // Edge Function "intake": receives Grant Application 2027 submissions.
 //   POST /submit    -> validates, stores answers, returns signed upload URLs
 //   POST /finalize  -> checks uploads arrived, marks complete, sends confirmation email
+//   POST /draft/save, /draft/load -> save and resume an unfinished application with a code
 // Secrets (set with `supabase secrets set`, never in the repo):
 //   TURNSTILE_SECRET   optional until the captcha is enabled
 //   RESEND_API_KEY, EMAIL_FROM   optional, confirmation email
@@ -10,6 +11,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import "../_shared/window-shim.js";   // must stay before questions.js
 import "../_shared/questions.js";      // bundled as a module, so it ships with the deploy
 import { cleanAnswers, validate } from "../_shared/validate.js";
+import { loadDraft, normalizeCode, saveDraft } from "../_shared/drafts.js";
 
 const BUCKET = "applications";
 // deno-lint-ignore no-explicit-any
@@ -61,6 +63,26 @@ async function captchaOk(token: string, ip: string) {
     method: "POST", body: new URLSearchParams({ secret, response: token, remoteip: ip }),
   });
   return !!(await r.json()).success;
+}
+
+// Drafts: adapter between _shared/drafts.js and the database.
+const draftStore = {
+  async get(code: string) { const { data } = await db.from("drafts").select("*").eq("code", code).maybeSingle(); return data; },
+  async insert(row: unknown) { const { error } = await db.from("drafts").insert(row); if (error) throw error; },
+  async update(code: string, patch: unknown) { const { error } = await db.from("drafts").update(patch).eq("code", code); if (error) throw error; },
+  rateLimited,
+};
+async function draftRoute(req: Request, kind: "save" | "load") {
+  const text = await req.text();
+  if (text.length > 260_000) return json(req, 413, { error: "Request too large." });
+  let body: any;
+  try { body = JSON.parse(text); } catch { return json(req, 400, { error: "Invalid JSON." }); }
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+  const ipHash = await sha256(ip + (Deno.env.get("IP_SALT") || ""));
+  const r = kind === "save"
+    ? await saveDraft(draftStore, body, ipHash, (n: number) => crypto.getRandomValues(new Uint8Array(n)))
+    : await loadDraft(draftStore, body, ipHash);
+  return json(req, r.status, r.body);
 }
 
 async function submit(req: Request) {
@@ -127,6 +149,8 @@ async function finalize(req: Request) {
   if (missing.length) return json(req, 409, { error: "Some files did not finish uploading. Please submit again." });
 
   await db.from("applications").update({ status: "complete", finalized_at: new Date().toISOString() }).eq("application_id", application_id);
+  const dcode = normalizeCode(body.draft_code);              // the applicant's saved draft is no longer needed
+  if (dcode) await db.from("drafts").delete().eq("code", dcode);
 
   const key = Deno.env.get("RESEND_API_KEY"), from = Deno.env.get("EMAIL_FROM");
   if (key && from && app.contact_email) {
@@ -150,6 +174,8 @@ Deno.serve(async (req) => {
   try {
     if (path.endsWith("/submit")) return await submit(req);
     if (path.endsWith("/finalize")) return await finalize(req);
+    if (path.endsWith("/draft/save")) return await draftRoute(req, "save");
+    if (path.endsWith("/draft/load")) return await draftRoute(req, "load");
     return json(req, 404, { error: "Not found." });
   } catch (e) {
     console.error(e);

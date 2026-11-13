@@ -30,3 +30,11 @@ Setup steps: `docs/supabase-setup.md`. Client uploads each file as a multipart P
 
 ## Not built yet
 Saving progress with a return code (needs a drafts table) and the Turnstile widget on the page.
+
+## Save and resume (drafts)
+- `POST /draft/save` `{ code?, state, saved_sections }` → `{ code }`. No `code` = new draft (the server makes `GA27-XXX-XXX-XXX`); with `code` it updates that draft (404 if unknown: the client cannot invent codes). `state` is the snapshot of form controls built by `site/assets/form.js` (max 200 KB). Limits: 60 saves/h and 10 new drafts/day per IP.
+- `POST /draft/load` `{ code }` → `{ code, state, saved_sections, updated_at }`. 404 if missing or older than 60 days. Limit: 20 tries/h per IP.
+- `POST /finalize` also takes `draft_code`; on success the draft is deleted.
+- Files are never saved in a draft (only their names): the applicant attaches them again.
+- Table `drafts` (migration `20261113000000_drafts.sql`). Purge: `delete from drafts where updated_at < now() - interval '60 days';`
+- Tests: `node tests/drafts.test.mjs`; browser roundtrip `node tests/draft-roundtrip.js` (site served on :8099).

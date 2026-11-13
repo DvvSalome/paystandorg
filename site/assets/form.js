@@ -12,6 +12,13 @@
   var V = {};              // answers by question id (+ "__" sub-values)
   var FILES = {};          // File objects by question id
   var ST = { profile: "—" };
+  var draftCode = "";      // server-issued code of the saved draft ("" = nothing saved yet)
+  var SAVED = {};          // section id -> true while it has no edits since the last save
+  var restoring = false;   // true while a saved draft is being poured back into the controls
+  var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
+  var LS_KEY = "ga27-draft-code";
+  var secUI = {};          // section id -> { btn, msg }
+  var busySaving = false;
   var form = document.getElementById("form");
 
   function el(tag, cls, text) {
@@ -40,6 +47,7 @@
     F.filter(function (f) { return f.s === sec.id; }).forEach(function (f) {
       box.appendChild(buildField(f));
     });
+    box.appendChild(sectionFooter(sec));
     form.appendChild(box);
   });
 
@@ -57,8 +65,14 @@
   sub.type = "button";
   var status = el("div", "status"); status.id = "status";
   status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
-  bar.appendChild(captcha); bar.appendChild(sub); bar.appendChild(status);
+  var subRow = el("div", "subrow");
+  var saveBtm = el("button", "savebtn", "Save progress");
+  saveBtm.type = "button";
+  subRow.appendChild(sub); subRow.appendChild(saveBtm);
+  bar.appendChild(captcha); bar.appendChild(subRow); bar.appendChild(status);
   form.appendChild(bar);
+  var savebar = buildSaveBar();
+  form.insertBefore(savebar.root, form.firstChild);
 
   function buildField(f) {
     var wrap = el("div", "f");
@@ -542,6 +556,174 @@
     var done = reqVis.length - missingIds().length;
     document.getElementById("pfill").style.width = (reqVis.length ? Math.round(done / reqVis.length * 100) : 0) + "%";
     document.getElementById("plabel").textContent = done + " of " + reqVis.length + " required questions answered";
+    if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
+  }
+
+
+  /* ---------- save and resume ---------- */
+
+  function sectionFooter(sec) {
+    var row = el("div", "secsave");
+    var btn = el("button", "savebtn", "Save section " + sec.id);
+    btn.type = "button";
+    var msg = el("span", "secmsg");
+    msg.setAttribute("aria-live", "polite");
+    row.appendChild(btn); row.appendChild(msg);
+    secUI[sec.id] = { btn: btn, msg: msg };
+    btn.addEventListener("click", function () { saveDraft(sec.id); });
+    return row;
+  }
+
+  function buildSaveBar() {
+    var root = el("div", "savebar");
+    var top = el("div", "savetop");
+    var txt = el("p", "savetext", "Save as you go. You can finish later, from any device, with your code.");
+    var btn = el("button", "savebtn primary", "Save and get my code");
+    btn.type = "button";
+    top.appendChild(txt); top.appendChild(btn);
+    var codeRow = el("div", "coderow"); codeRow.hidden = true;
+    var codeLab = el("span", null, "Your code:");
+    var codeEl = el("strong", "codeval");
+    var copy = el("button", "savebtn", "Copy"); copy.type = "button";
+    var codeNote = el("span", "codenote", "Keep it somewhere safe: anyone with this code can open your draft. Attached files are not saved, so you will attach them again.");
+    codeRow.appendChild(codeLab); codeRow.appendChild(codeEl); codeRow.appendChild(copy); codeRow.appendChild(codeNote);
+    var resume = el("div", "resumerow");
+    var rl = el("label", null, "Already saved? Enter your code to continue:");
+    var ri = el("input"); ri.type = "text"; ri.placeholder = "GA27-XXX-XXX-XXX"; ri.autocomplete = "off";
+    ri.setAttribute("aria-label", "Saved application code"); ri.maxLength = 20;
+    var rb = el("button", "savebtn", "Resume"); rb.type = "button";
+    resume.appendChild(rl); resume.appendChild(ri); resume.appendChild(rb);
+    var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
+    root.appendChild(top); root.appendChild(codeRow); root.appendChild(resume); root.appendChild(msg);
+
+    btn.addEventListener("click", function () { saveDraft(null); });
+    saveBtm.addEventListener("click", function () { saveDraft(null); });
+    rb.addEventListener("click", function () { resumeDraft(ri.value); });
+    ri.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); resumeDraft(ri.value); } });
+    copy.addEventListener("click", function () {
+      var done = function () { copy.textContent = "Copied"; window.setTimeout(function () { copy.textContent = "Copy"; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
+    });
+    return { root: root, msg: msg, codeRow: codeRow, codeEl: codeEl, input: ri };
+  }
+
+  function say(kind, text) { savebar.msg.className = "savemsg" + (kind ? " " + kind : ""); savebar.msg.textContent = text || ""; }
+  function showCode() {
+    savebar.codeRow.hidden = !draftCode; savebar.codeEl.textContent = draftCode;
+    try { if (draftCode) localStorage.setItem(LS_KEY, draftCode); else localStorage.removeItem(LS_KEY); } catch (e) {}
+  }
+
+  function draftControls(wrap) {
+    return Array.prototype.filter.call(wrap.querySelectorAll("input,textarea,select"), function (c) {
+      return c.type !== "file" && !c.readOnly;
+    });
+  }
+  // Snapshot = the value of every control, in document order, per question. Restoring replays them as
+  // user input, so the form's own handlers rebuild V and every derived value the same way as typing.
+  function snapshot() {
+    var fields = {};
+    F.forEach(function (f) {
+      var wrap = document.getElementById("f-" + f.id); if (!wrap) return;
+      var vals = draftControls(wrap).map(function (c) {
+        return (c.type === "checkbox" || c.type === "radio") ? (c.checked ? 1 : 0) : c.value;
+      });
+      if (vals.some(function (x) { return x !== "" && x !== 0; })) fields[f.id] = vals;
+    });
+    var files = {};
+    Object.keys(FILES).forEach(function (id) { files[id] = FILES[id].name; });
+    Object.keys(savedFiles).forEach(function (id) { if (!files[id] && !FILES[id]) files[id] = savedFiles[id]; });
+    return { v: 1, fields: fields, files: files, g2touched: !!V.__g2touched, email: V.D1__email || "" };
+  }
+
+  function fire(n, t) { n.dispatchEvent(new Event(t, { bubbles: true })); }
+  function restore(state) {
+    restoring = true;
+    try {
+      F.forEach(function (f) {
+        var wrap = document.getElementById("f-" + f.id), vals = state.fields && state.fields[f.id];
+        if (!wrap || !vals) return;
+        draftControls(wrap).forEach(function (c, i) {
+          var x = vals[i]; if (x === undefined) return;
+          if (c.type === "checkbox") { c.checked = x === 1; fire(c, "change"); }
+          else if (c.type === "radio") { c.checked = x === 1; if (x === 1) fire(c, "change"); }
+          else if (c.tagName === "SELECT") { c.value = x; fire(c, "change"); }
+          else if (f.type === "country") { c.value = x; V[f.id] = x; }
+          else { c.value = x; fire(c, "input"); fire(c, "change"); }
+        });
+      });
+      V.__g2touched = !!state.g2touched;
+    } finally { restoring = false; }
+    savedFiles = state.files || {};
+    Object.keys(savedFiles).forEach(function (id) {
+      var body = document.querySelector("#f-" + id + " .body"); if (!body) return;
+      var old = body.querySelector(".filenote"); if (old) old.remove();
+      body.appendChild(el("p", "help filenote", "You attached “" + savedFiles[id] + "” before. Files are not saved: please attach it again."));
+    });
+    refresh();
+  }
+
+  function saveDraft(secId) {
+    if (busySaving) return;
+    if (!CFG.endpoint) { say("bad", "Preview build: saving is not connected."); return; }
+    busySaving = true; say("", "Saving…");
+    var ids = SECTIONS.map(function (s) { return s.id; });
+    postJSON(CFG.endpoint + "/draft/save", { code: draftCode || undefined, state: snapshot(), saved_sections: ids })
+      .catch(function (err) {
+        if (draftCode && /not found/i.test(err.message)) {          // the code expired: start a new one
+          draftCode = "";
+          return postJSON(CFG.endpoint + "/draft/save", { state: snapshot(), saved_sections: ids });
+        }
+        throw err;
+      })
+      .then(function (res) {
+        draftCode = res.code; showCode();
+        ids.forEach(function (id) { SAVED[id] = true; });
+        var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
+        say("ok", "Saved at " + hh + ". Your code is " + draftCode + ". Use it to continue later, from any device.");
+        updateSaveUI();
+      })
+      .catch(function (err) { say("bad", "We could not save: " + err.message); })
+      .then(function () { busySaving = false; });
+  }
+
+  function resumeDraft(raw) {
+    var code = String(raw || "").trim();
+    if (!code) { say("bad", "Enter the code you got when you saved."); return; }
+    if (!CFG.endpoint) { say("bad", "Preview build: saving is not connected."); return; }
+    say("", "Looking for your draft…");
+    postJSON(CFG.endpoint + "/draft/load", { code: code })
+      .then(function (res) {
+        restore(res.state || {});
+        draftCode = res.code; showCode();
+        (res.saved_sections || []).forEach(function (id) { SAVED[id] = true; });
+        updateSaveUI();
+        say("ok", "Your saved answers are back. Attach your files again before submitting.");
+        savebar.root.scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+      .catch(function (err) { say("bad", err.message); });
+  }
+
+  function updateSaveUI() {
+    SECTIONS.forEach(function (sec) {
+      var ui = secUI[sec.id]; if (!ui) return;
+      var req = F.filter(function (f) { return f.s === sec.id && f.req && visible(f); });
+      var open = missingIds().filter(function (id) { return req.some(function (f) { return f.id === id; }); }).length;
+      var txt;
+      if (SAVED[sec.id]) txt = open ? "Saved — " + open + " required still open" : "Saved ✓ all required answered";
+      else if (!req.length) txt = "Nothing required here";
+      else txt = open ? open + " of " + req.length + " required still open" : "All required answered";
+      ui.msg.textContent = txt;
+      ui.msg.className = "secmsg" + (SAVED[sec.id] ? " saved" : "") + (!open && req.length ? " done" : "");
+    });
+  }
+
+  // Any edit makes its section "unsaved" again.
+  form.addEventListener("input", markDirty);
+  form.addEventListener("change", markDirty);
+  function markDirty(e) {
+    if (restoring) return;
+    var sec = e.target && e.target.closest && e.target.closest("fieldset.sec");
+    if (sec) { delete SAVED[sec.id.replace("sec-", "")]; updateSaveUI(); }
   }
 
   /* ---------- submit ---------- */
@@ -617,12 +799,13 @@
             .then(function (r) { if (!r.ok) throw new Error("A file could not be uploaded (" + u.question + ")."); });
         });
         return Promise.all(ups).then(function () {
-          return postJSON(CFG.endpoint + "/finalize", { application_id: res.application_id, token: res.token });
+          return postJSON(CFG.endpoint + "/finalize", { application_id: res.application_id, token: res.token, draft_code: draftCode || undefined });
         }).then(function () { return res; });
       })
       .then(function (res) {
         setStatus("ok", "Application received. Your application ID is " + res.application_id + ". Please keep it for your records.");
         sub.textContent = "Submitted";
+        draftCode = ""; showCode();
       })
       .catch(function (err) {
         if (err.fields) Object.keys(err.fields).forEach(function (id) { mark(id, "Please check this answer (" + err.fields[id] + ")."); });
@@ -635,5 +818,9 @@
     window.turnstile.render("#captcha", { sitekey: CFG.turnstileSiteKey });
   }
 
+  try {
+    var remembered = localStorage.getItem(LS_KEY);
+    if (remembered) { savebar.input.value = remembered; say("", "You have a saved draft on this device. Press Resume to continue it."); }
+  } catch (e) {}
   refresh();
 })();

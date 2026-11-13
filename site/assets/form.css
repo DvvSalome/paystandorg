@@ -61,3 +61,26 @@ button.submit:focus-visible { outline: 3px solid var(--ps-blue); outline-offset:
   .bline { grid-template-columns: 1fr 110px; }
 }
 @media (prefers-reduced-motion: reduce) { .pfill { transition: none; } }
+
+/* ---- save and resume ---- */
+.savebar { border: 1px solid var(--ps-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; display: grid; gap: 10px; background: var(--ps-field); }
+.savetop { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.savetext { margin: 0; flex: 1 1 260px; }
+button.savebtn { font: inherit; font-weight: 600; font-size: .95rem; background: #fff; color: var(--ps-btn); border: 1.5px solid var(--ps-btn); border-radius: 6px; padding: 9px 18px; cursor: pointer; }
+button.savebtn.primary { background: var(--ps-btn); color: #fff; }
+button.savebtn:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
+.coderow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.codeval { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.1rem; letter-spacing: .04em; user-select: all; }
+.codenote { flex-basis: 100%; font-size: .9rem; opacity: .8; }
+.resumerow { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
+.resumerow label { flex-basis: 100%; font-size: .95rem; }
+.resumerow input { font: inherit; padding: 9px 12px; border: 1px solid var(--ps-border); border-radius: 6px; min-width: 0; width: 15em; max-width: 100%; text-transform: uppercase; }
+.savemsg { font-size: .95rem; } .savemsg:empty { display: none; }
+.savemsg.ok { color: var(--ps-ok); } .savemsg.bad { color: var(--ps-err); }
+.secsave { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--ps-border); }
+.secmsg { font-size: .92rem; opacity: .85; } .secmsg.saved { color: var(--ps-ok); opacity: 1; } .secmsg.done { font-weight: 600; }
+.subrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.filenote { font-style: italic; }
+html.embed button.savebtn { border-color: #001B5B; color: #001B5B; border-radius: 999px; }
+html.embed button.savebtn.primary { background: #001B5B; color: #fff; }
+.coderow[hidden] { display: none; }

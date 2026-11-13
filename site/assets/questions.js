@@ -61,9 +61,24 @@
         "Project description, budget, timeline and milestone plan",
         "Contact details for the primary contact and the authorized representative"
       ] },
-    { id: "0.2", s: "0", type: "checks", req: "all",
+    // req is deliberately absent. It used to be "all", which contradicted
+    // three other places that expect an applicant to be able to proceed with
+    // an explanation:
+    //
+    //   · this field's own help text ("explain it in section K rather than
+    //     stopping here") — unreachable, because validation blocked at 3 of 4
+    //   · K2.showIf, which already appears when fewer than four are checked
+    //   · Eva's eligibility gate ("a 0.2 box is missing and K2 does not
+    //     explain it"), which the pipeline has been carrying unused
+    //
+    // Nothing is lost by relaxing it: K2 is required whenever fewer than four
+    // are checked, so every such application still arrives with a written
+    // reason, and Eva still routes it to manual review. What changes is that
+    // the applicant can finish and say why, instead of hitting a wall the
+    // form told them would not be there.
+    { id: "0.2", s: "0", type: "checks",
       label: "Eligibility checklist",
-      help: "All four must be checked. If you cannot check one, explain it in section K rather than stopping here.",
+      help: "All four should be checked. If you cannot check one, you can still continue — you will be asked to explain it in section K.",
       options: [
         "Our work serves people facing economic barriers",
         "We have a charitable purpose — no political campaigning or private benefit",

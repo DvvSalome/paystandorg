@@ -6,9 +6,28 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 globalThis.window = globalThis.window || {};
 
 // ---- questions (from site/assets/questions.js) ----
-/* Grant Application 2027 — question definitions (v3, 61 questions).
+/* Grant Application 2027 — question definitions (v3, 60 questions).
    Source: Ivan's Apps Script preview, 10 Nov 2026. Edit here to change questions;
-   the form engine in form.js does not hard-code any question. */
+   the form engine in form.js does not hard-code any question.
+
+   It is 60, not 61. Two other documents say 61 and each counts something
+   that is not a question, which is why the number looked confirmed:
+
+     - The form specification lists 61 numbered items because it includes
+       G6 (cost per participant), which its own row marks "Computed: G2 ÷ E5
+       — Internal, not shown to the applicant". G6 is derived in the
+       pipeline's step_clean; nobody is ever asked it.
+     - QUESTION_MAP in intake_pipeline.py has 61 entries because it includes
+       Timestamp, the submission-time column.
+
+   So: 60 questions here, 60 + Timestamp = 61 columns for Eva, and 60 + G6
+   = 61 rows in the spec. Verified by diffing all three sets in both
+   directions on 2026-11-13: zero discrepancies against QUESTION_MAP, and
+   G6 the only item the spec has that this file does not.
+
+   Nobody ever sees all 60: 13 are conditional. An individual applying for
+   the first time sees 49; an organisation applying for the first time, 53;
+   a 2026 renewal, 58. */
 (function () {
   "use strict";
   var COUNTRIES = ["Afghanistan","Albania","Algeria","Angola","Argentina","Armenia","Australia","Austria","Bangladesh","Belgium","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","Colombia","Comoros","Congo (DRC)","Congo (Republic)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Czechia","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Eritrea","Estonia","Eswatini","Ethiopia","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kenya","Kosovo","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Lithuania","Madagascar","Malawi","Malaysia","Mali","Mauritania","Mexico","Moldova","Mongolia","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Macedonia","Norway","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Romania","Rwanda","Senegal","Serbia","Sierra Leone","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Trinidad and Tobago","Tunisia","Turkey","Uganda","Ukraine","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
@@ -50,9 +69,24 @@ globalThis.window = globalThis.window || {};
         "Project description, budget, timeline and milestone plan",
         "Contact details for the primary contact and the authorized representative"
       ] },
-    { id: "0.2", s: "0", type: "checks", req: "all",
+    // req is deliberately absent. It used to be "all", which contradicted
+    // three other places that expect an applicant to be able to proceed with
+    // an explanation:
+    //
+    //   · this field's own help text ("explain it in section K rather than
+    //     stopping here") — unreachable, because validation blocked at 3 of 4
+    //   · K2.showIf, which already appears when fewer than four are checked
+    //   · Eva's eligibility gate ("a 0.2 box is missing and K2 does not
+    //     explain it"), which the pipeline has been carrying unused
+    //
+    // Nothing is lost by relaxing it: K2 is required whenever fewer than four
+    // are checked, so every such application still arrives with a written
+    // reason, and Eva still routes it to manual review. What changes is that
+    // the applicant can finish and say why, instead of hitting a wall the
+    // form told them would not be there.
+    { id: "0.2", s: "0", type: "checks",
       label: "Eligibility checklist",
-      help: "All four must be checked. If you cannot check one, explain it in section K rather than stopping here.",
+      help: "All four should be checked. If you cannot check one, you can still continue — you will be asked to explain it in section K.",
       options: [
         "Our work serves people facing economic barriers",
         "We have a charitable purpose — no political campaigning or private benefit",

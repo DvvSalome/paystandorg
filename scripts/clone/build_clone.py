@@ -99,6 +99,12 @@ h = h[:s_end] + FORM + h[s_end:]
 HEAD = '''<meta name="robots" content="noindex">
 <style id="ga27-layout">
 html { scroll-behavior: smooth; }
+/* The cloned page carries Wix's site search. It has no backend here, so it
+   either does nothing or sends people to the live site mid-application — and
+   it lands next to section F, where it reads as part of the form. Hidden by
+   the stable wixui- class, not by comp-id: those are regenerated whenever the
+   Wix page is republished. */
+.wixui-search-bar, [data-testid="search-box-container"] { display: none !important; }
 .xxr34-container { grid-template-rows: auto auto auto auto auto auto !important; }
 #comp-m06zws6u { grid-row: 6 / 7 !important; }
 #ga27-apply { grid-row: 5 / 6; grid-column: 1; pointer-events: auto; padding: 90px 20px 90px; box-sizing: border-box; }

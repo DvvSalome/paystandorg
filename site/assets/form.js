@@ -17,7 +17,8 @@
   var restoring = false;   // true while a saved draft is being poured back into the controls
   var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
   var LS_KEY = "ga27-draft-code";
-  var secUI = {};          // section id -> { btn, msg }
+  var secUI = {};          // section id -> { btn, msg, flash }
+  var secProg = {};        // section id -> el progreso de su encabezado
   var busySaving = false;
   var form = document.getElementById("form");
 
@@ -43,6 +44,17 @@
     head.appendChild(el("div", "secid", "Section " + sec.id));
     head.appendChild(el("h3", null, sec.title));
     if (sec.note) head.appendChild(el("p", "secnote", sec.note));
+    // Progreso repetido en cada encabezado. La barra de arriba queda fuera
+    // de vista en una página de 60 preguntas, y en modo embed su sticky está
+    // desactivado a propósito (form/index.html:44) porque dentro de un
+    // iframe de altura automática no se pega a nada útil. Un indicador por
+    // sección no necesita sticky: siempre está donde la persona acaba de
+    // llegar. Y cuando el formulario pase a una sección por página, este
+    // mismo elemento se convierte en el encabezado del paso.
+    var secprog = el("p", "secprog");
+    secprog.setAttribute("aria-live", "polite");
+    head.appendChild(secprog);
+    secProg[sec.id] = secprog;
     box.appendChild(head);
     F.filter(function (f) { return f.s === sec.id; }).forEach(function (f) {
       box.appendChild(buildField(f));
@@ -556,6 +568,24 @@
     var done = reqVis.length - missingIds().length;
     document.getElementById("pfill").style.width = (reqVis.length ? Math.round(done / reqVis.length * 100) : 0) + "%";
     document.getElementById("plabel").textContent = done + " of " + reqVis.length + " required questions answered";
+
+    // El mismo número, repetido en cada sección, más lo que falta ahí.
+    var pos = {};
+    SECTIONS.forEach(function (s2, i) { pos[s2.id] = i + 1; });
+    SECTIONS.forEach(function (s2) {
+      var node = secProg[s2.id];
+      if (!node) return;
+      var mine = reqVis.filter(function (f) { return f.s === s2.id; });
+      var openHere = missingIds().filter(function (id) {
+        return mine.some(function (f) { return f.id === id; });
+      }).length;
+      node.textContent = "Section " + s2.id + " of " + SECTIONS.length +
+        "  ·  " + done + " of " + reqVis.length + " required answered overall" +
+        (mine.length ? (openHere ? "  ·  " + openHere + " still open here"
+                                 : "  ·  this section is complete") : "");
+      node.className = "secprog" + (mine.length && !openHere ? " done" : "");
+    });
+
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
@@ -568,10 +598,29 @@
     btn.type = "button";
     var msg = el("span", "secmsg");
     msg.setAttribute("aria-live", "polite");
-    row.appendChild(btn); row.appendChild(msg);
-    secUI[sec.id] = { btn: btn, msg: msg };
+    // The outcome of a save gets its own element. `msg` belongs to
+    // updateSaveUI, which keeps the completeness status there ("3 of 7
+    // required still open"). Sharing one element meant a successful save
+    // read as a six-character text change, and a failed save showed up
+    // nowhere at all — the error went to the global bar, far up the page,
+    // so the button looked inert either way. Two jobs, two elements.
+    var flash = el("span", "secflash");
+    flash.setAttribute("role", "status");
+    flash.setAttribute("aria-live", "polite");
+    flash.hidden = true;
+    row.appendChild(btn); row.appendChild(msg); row.appendChild(flash);
+    secUI[sec.id] = { btn: btn, msg: msg, flash: flash };
     btn.addEventListener("click", function () { saveDraft(sec.id); });
     return row;
+  }
+
+  // Save feedback next to the button the person actually pressed.
+  function flashSection(secId, kind, text) {
+    var ui = secId && secUI[secId];
+    if (!ui || !ui.flash) return;
+    ui.flash.hidden = !text;
+    ui.flash.className = "secflash" + (kind ? " " + kind : "");
+    ui.flash.textContent = text || "";
   }
 
   function buildSaveBar() {
@@ -664,8 +713,15 @@
 
   function saveDraft(secId) {
     if (busySaving) return;
-    if (!CFG.endpoint) { say("bad", "Preview build: saving is not connected."); return; }
-    busySaving = true; say("", "Saving…");
+    // Every message goes to both places: the global bar, and — when a
+    // section button was the one pressed — right next to that button.
+    // Nothing about saving should be invisible from where you clicked.
+    function both(kind, text) { say(kind, text); flashSection(secId, kind, text); }
+    if (!CFG.endpoint) {
+      both("bad", "Saving is not connected in this preview build. Your answers are not stored.");
+      return;
+    }
+    busySaving = true; both("", "Saving…");
     var ids = SECTIONS.map(function (s) { return s.id; });
     postJSON(CFG.endpoint + "/draft/save", { code: draftCode || undefined, state: snapshot(), saved_sections: ids })
       .catch(function (err) {
@@ -680,9 +736,11 @@
         ids.forEach(function (id) { SAVED[id] = true; });
         var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
         say("ok", "Saved at " + hh + ". Your code is " + draftCode + ". Use it to continue later, from any device.");
+        // updateSaveUI rewrites secmsg, so the flash goes after it.
         updateSaveUI();
+        flashSection(secId, "ok", "Saved at " + hh + " ✓");
       })
-      .catch(function (err) { say("bad", "We could not save: " + err.message); })
+      .catch(function (err) { both("bad", "We could not save: " + err.message); })
       .then(function () { busySaving = false; });
   }
 
@@ -723,7 +781,14 @@
   function markDirty(e) {
     if (restoring) return;
     var sec = e.target && e.target.closest && e.target.closest("fieldset.sec");
-    if (sec) { delete SAVED[sec.id.replace("sec-", "")]; updateSaveUI(); }
+    if (sec) {
+      var sid = sec.id.replace("sec-", "");
+      delete SAVED[sid];
+      // The flash said "Saved at 14:32" — after an edit that is no longer
+      // true, and a stale confirmation is worse than none.
+      flashSection(sid, "", "");
+      updateSaveUI();
+    }
   }
 
   /* ---------- submit ---------- */

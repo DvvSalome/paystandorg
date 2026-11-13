@@ -87,6 +87,17 @@ button.savebtn:focus-visible { outline: 3px solid var(--ps-blue); outline-offset
 .savemsg.ok { color: var(--ps-ok); } .savemsg.bad { color: var(--ps-err); }
 .secsave { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--ps-border); }
 .secmsg { font-size: .92rem; opacity: .85; } .secmsg.saved { color: var(--ps-ok); opacity: 1; } .secmsg.done { font-weight: 600; }
+/* Resultado del guardado, junto al botón que se presionó. Separado de
+   .secmsg, que lleva el estado de completitud y lo reescribe updateSaveUI. */
+.secflash { font-size: .92rem; font-weight: 600; padding: 3px 9px; border-radius: 3px; }
+.secflash.ok  { color: #0b5a33; background: #e4f4ea; }
+.secflash.bad { color: #7a2412; background: #fbe8e2; }
+
+/* Progreso por sección: no necesita sticky porque está donde la persona
+   acaba de llegar. Se vuelve el encabezado del paso cuando el formulario
+   pase a una sección por página. */
+.secprog { margin: 6px 0 0; font-size: .86rem; color: var(--ps-muted, #5a6472); font-variant-numeric: tabular-nums; }
+.secprog.done { color: var(--ps-ok); font-weight: 600; }
 .subrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .filenote { font-style: italic; }
 html.embed button.savebtn { border-color: #001B5B; color: #001B5B; border-radius: 999px; }
@@ -170,9 +181,28 @@ window.GA27_CONFIG = {
 
 </script>
 <script>
-/* Grant Application 2027 — question definitions (v3, 61 questions).
+/* Grant Application 2027 — question definitions (v3, 60 questions).
    Source: Ivan's Apps Script preview, 10 Nov 2026. Edit here to change questions;
-   the form engine in form.js does not hard-code any question. */
+   the form engine in form.js does not hard-code any question.
+
+   It is 60, not 61. Two other documents say 61 and each counts something
+   that is not a question, which is why the number looked confirmed:
+
+     - The form specification lists 61 numbered items because it includes
+       G6 (cost per participant), which its own row marks "Computed: G2 ÷ E5
+       — Internal, not shown to the applicant". G6 is derived in the
+       pipeline's step_clean; nobody is ever asked it.
+     - QUESTION_MAP in intake_pipeline.py has 61 entries because it includes
+       Timestamp, the submission-time column.
+
+   So: 60 questions here, 60 + Timestamp = 61 columns for Eva, and 60 + G6
+   = 61 rows in the spec. Verified by diffing all three sets in both
+   directions on 2026-11-13: zero discrepancies against QUESTION_MAP, and
+   G6 the only item the spec has that this file does not.
+
+   Nobody ever sees all 60: 13 are conditional. An individual applying for
+   the first time sees 49; an organisation applying for the first time, 53;
+   a 2026 renewal, 58. */
 (function () {
   "use strict";
   var COUNTRIES = ["Afghanistan","Albania","Algeria","Angola","Argentina","Armenia","Australia","Austria","Bangladesh","Belgium","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","Colombia","Comoros","Congo (DRC)","Congo (Republic)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Czechia","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Eritrea","Estonia","Eswatini","Ethiopia","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kenya","Kosovo","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Lithuania","Madagascar","Malawi","Malaysia","Mali","Mauritania","Mexico","Moldova","Mongolia","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Macedonia","Norway","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Romania","Rwanda","Senegal","Serbia","Sierra Leone","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Trinidad and Tobago","Tunisia","Turkey","Uganda","Ukraine","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
@@ -214,9 +244,24 @@ window.GA27_CONFIG = {
         "Project description, budget, timeline and milestone plan",
         "Contact details for the primary contact and the authorized representative"
       ] },
-    { id: "0.2", s: "0", type: "checks", req: "all",
+    // req is deliberately absent. It used to be "all", which contradicted
+    // three other places that expect an applicant to be able to proceed with
+    // an explanation:
+    //
+    //   · this field's own help text ("explain it in section K rather than
+    //     stopping here") — unreachable, because validation blocked at 3 of 4
+    //   · K2.showIf, which already appears when fewer than four are checked
+    //   · Eva's eligibility gate ("a 0.2 box is missing and K2 does not
+    //     explain it"), which the pipeline has been carrying unused
+    //
+    // Nothing is lost by relaxing it: K2 is required whenever fewer than four
+    // are checked, so every such application still arrives with a written
+    // reason, and Eva still routes it to manual review. What changes is that
+    // the applicant can finish and say why, instead of hitting a wall the
+    // form told them would not be there.
+    { id: "0.2", s: "0", type: "checks",
       label: "Eligibility checklist",
-      help: "All four must be checked. If you cannot check one, explain it in section K rather than stopping here.",
+      help: "All four should be checked. If you cannot check one, you can still continue — you will be asked to explain it in section K.",
       options: [
         "Our work serves people facing economic barriers",
         "We have a charitable purpose — no political campaigning or private benefit",
@@ -504,7 +549,8 @@ window.GA27_CONFIG = {
   var restoring = false;   // true while a saved draft is being poured back into the controls
   var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
   var LS_KEY = "ga27-draft-code";
-  var secUI = {};          // section id -> { btn, msg }
+  var secUI = {};          // section id -> { btn, msg, flash }
+  var secProg = {};        // section id -> el progreso de su encabezado
   var busySaving = false;
   var form = document.getElementById("form");
 
@@ -530,6 +576,17 @@ window.GA27_CONFIG = {
     head.appendChild(el("div", "secid", "Section " + sec.id));
     head.appendChild(el("h3", null, sec.title));
     if (sec.note) head.appendChild(el("p", "secnote", sec.note));
+    // Progreso repetido en cada encabezado. La barra de arriba queda fuera
+    // de vista en una página de 60 preguntas, y en modo embed su sticky está
+    // desactivado a propósito (form/index.html:44) porque dentro de un
+    // iframe de altura automática no se pega a nada útil. Un indicador por
+    // sección no necesita sticky: siempre está donde la persona acaba de
+    // llegar. Y cuando el formulario pase a una sección por página, este
+    // mismo elemento se convierte en el encabezado del paso.
+    var secprog = el("p", "secprog");
+    secprog.setAttribute("aria-live", "polite");
+    head.appendChild(secprog);
+    secProg[sec.id] = secprog;
     box.appendChild(head);
     F.filter(function (f) { return f.s === sec.id; }).forEach(function (f) {
       box.appendChild(buildField(f));
@@ -1043,6 +1100,24 @@ window.GA27_CONFIG = {
     var done = reqVis.length - missingIds().length;
     document.getElementById("pfill").style.width = (reqVis.length ? Math.round(done / reqVis.length * 100) : 0) + "%";
     document.getElementById("plabel").textContent = done + " of " + reqVis.length + " required questions answered";
+
+    // El mismo número, repetido en cada sección, más lo que falta ahí.
+    var pos = {};
+    SECTIONS.forEach(function (s2, i) { pos[s2.id] = i + 1; });
+    SECTIONS.forEach(function (s2) {
+      var node = secProg[s2.id];
+      if (!node) return;
+      var mine = reqVis.filter(function (f) { return f.s === s2.id; });
+      var openHere = missingIds().filter(function (id) {
+        return mine.some(function (f) { return f.id === id; });
+      }).length;
+      node.textContent = "Section " + s2.id + " of " + SECTIONS.length +
+        "  ·  " + done + " of " + reqVis.length + " required answered overall" +
+        (mine.length ? (openHere ? "  ·  " + openHere + " still open here"
+                                 : "  ·  this section is complete") : "");
+      node.className = "secprog" + (mine.length && !openHere ? " done" : "");
+    });
+
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
@@ -1055,10 +1130,29 @@ window.GA27_CONFIG = {
     btn.type = "button";
     var msg = el("span", "secmsg");
     msg.setAttribute("aria-live", "polite");
-    row.appendChild(btn); row.appendChild(msg);
-    secUI[sec.id] = { btn: btn, msg: msg };
+    // The outcome of a save gets its own element. `msg` belongs to
+    // updateSaveUI, which keeps the completeness status there ("3 of 7
+    // required still open"). Sharing one element meant a successful save
+    // read as a six-character text change, and a failed save showed up
+    // nowhere at all — the error went to the global bar, far up the page,
+    // so the button looked inert either way. Two jobs, two elements.
+    var flash = el("span", "secflash");
+    flash.setAttribute("role", "status");
+    flash.setAttribute("aria-live", "polite");
+    flash.hidden = true;
+    row.appendChild(btn); row.appendChild(msg); row.appendChild(flash);
+    secUI[sec.id] = { btn: btn, msg: msg, flash: flash };
     btn.addEventListener("click", function () { saveDraft(sec.id); });
     return row;
+  }
+
+  // Save feedback next to the button the person actually pressed.
+  function flashSection(secId, kind, text) {
+    var ui = secId && secUI[secId];
+    if (!ui || !ui.flash) return;
+    ui.flash.hidden = !text;
+    ui.flash.className = "secflash" + (kind ? " " + kind : "");
+    ui.flash.textContent = text || "";
   }
 
   function buildSaveBar() {
@@ -1151,8 +1245,15 @@ window.GA27_CONFIG = {
 
   function saveDraft(secId) {
     if (busySaving) return;
-    if (!CFG.endpoint) { say("bad", "Preview build: saving is not connected."); return; }
-    busySaving = true; say("", "Saving…");
+    // Every message goes to both places: the global bar, and — when a
+    // section button was the one pressed — right next to that button.
+    // Nothing about saving should be invisible from where you clicked.
+    function both(kind, text) { say(kind, text); flashSection(secId, kind, text); }
+    if (!CFG.endpoint) {
+      both("bad", "Saving is not connected in this preview build. Your answers are not stored.");
+      return;
+    }
+    busySaving = true; both("", "Saving…");
     var ids = SECTIONS.map(function (s) { return s.id; });
     postJSON(CFG.endpoint + "/draft/save", { code: draftCode || undefined, state: snapshot(), saved_sections: ids })
       .catch(function (err) {
@@ -1167,9 +1268,11 @@ window.GA27_CONFIG = {
         ids.forEach(function (id) { SAVED[id] = true; });
         var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
         say("ok", "Saved at " + hh + ". Your code is " + draftCode + ". Use it to continue later, from any device.");
+        // updateSaveUI rewrites secmsg, so the flash goes after it.
         updateSaveUI();
+        flashSection(secId, "ok", "Saved at " + hh + " ✓");
       })
-      .catch(function (err) { say("bad", "We could not save: " + err.message); })
+      .catch(function (err) { both("bad", "We could not save: " + err.message); })
       .then(function () { busySaving = false; });
   }
 
@@ -1210,7 +1313,14 @@ window.GA27_CONFIG = {
   function markDirty(e) {
     if (restoring) return;
     var sec = e.target && e.target.closest && e.target.closest("fieldset.sec");
-    if (sec) { delete SAVED[sec.id.replace("sec-", "")]; updateSaveUI(); }
+    if (sec) {
+      var sid = sec.id.replace("sec-", "");
+      delete SAVED[sid];
+      // The flash said "Saved at 14:32" — after an edit that is no longer
+      // true, and a stale confirmation is worse than none.
+      flashSection(sid, "", "");
+      updateSaveUI();
+    }
   }
 
   /* ---------- submit ---------- */

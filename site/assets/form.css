@@ -79,6 +79,17 @@ button.savebtn:focus-visible { outline: 3px solid var(--ps-blue); outline-offset
 .savemsg.ok { color: var(--ps-ok); } .savemsg.bad { color: var(--ps-err); }
 .secsave { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--ps-border); }
 .secmsg { font-size: .92rem; opacity: .85; } .secmsg.saved { color: var(--ps-ok); opacity: 1; } .secmsg.done { font-weight: 600; }
+/* Resultado del guardado, junto al botón que se presionó. Separado de
+   .secmsg, que lleva el estado de completitud y lo reescribe updateSaveUI. */
+.secflash { font-size: .92rem; font-weight: 600; padding: 3px 9px; border-radius: 3px; }
+.secflash.ok  { color: #0b5a33; background: #e4f4ea; }
+.secflash.bad { color: #7a2412; background: #fbe8e2; }
+
+/* Progreso por sección: no necesita sticky porque está donde la persona
+   acaba de llegar. Se vuelve el encabezado del paso cuando el formulario
+   pase a una sección por página. */
+.secprog { margin: 6px 0 0; font-size: .86rem; color: var(--ps-muted, #5a6472); font-variant-numeric: tabular-nums; }
+.secprog.done { color: var(--ps-ok); font-weight: 600; }
 .subrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .filenote { font-style: italic; }
 html.embed button.savebtn { border-color: #001B5B; color: #001B5B; border-radius: 999px; }

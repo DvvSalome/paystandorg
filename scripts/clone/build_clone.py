@@ -78,6 +78,11 @@ tag = h[a:tag_end + 1]
 tag2 = re.sub(r'\shref="[^"]*"', ' href="#ga27-apply"', tag); tag2 = re.sub(r'\s(?:target|rel)="[^"]*"', '', tag2)
 h = h[:a] + tag2 + h[tag_end + 1:]
 
+# 3b. "Grants" (la página actual) no debe sacar al visitante a la página original de paystand.org,
+#     que todavía lleva el botón viejo hacia el Google Form. Solo se tocan los <a>, no el <link rel="canonical">.
+SELF = re.compile(r'(<a\b[^>]*\shref=")https://www\.paystand\.org/grantapplication/?(")')
+h = SELF.sub(r'\1./\2', h)
+
 # 4. sección del formulario, justo después de "How to Apply" y antes del pie
 s0 = h.index('id="comp-mj0bswls"'); s0 = h.rindex('<section', 0, s0)
 depth, pos = 0, s0
@@ -114,7 +119,7 @@ h = h.replace('</head>', HEAD + '</head>', 1)
 
 BODY = '''<div id="ga27-menu" role="dialog" aria-modal="true" aria-label="Menu">
   <button type="button" aria-label="Close menu"><svg viewBox="0 0 40 40" width="40" height="40" fill="none" stroke="#c6e4ff" stroke-width="2"><path d="M10 10l20 20M30 10L10 30"/></svg></button>
-  <nav aria-label="Main"><a href="https://www.paystand.org">Home</a><a href="https://www.paystand.org/grantapplication" aria-current="page">Grants</a><a href="https://www.paystand.org/impact-report">Reports</a><a href="https://www.paystand.org/blog">Blog</a></nav>
+  <nav aria-label="Main"><a href="https://www.paystand.org">Home</a><a href="./" aria-current="page">Grants</a><a href="https://www.paystand.org/impact-report">Reports</a><a href="https://www.paystand.org/blog">Blog</a></nav>
 </div>
 <script>
 (function () {

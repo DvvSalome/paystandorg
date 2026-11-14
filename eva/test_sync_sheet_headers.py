@@ -29,83 +29,7 @@ def check(cond, msg, got=None):
         print(f"  ✗ {msg}" + (f"\n      obtuvo: {got!r}" if got is not None else ""))
 
 
-def idx(col):
-    n = 0
-    for ch in col:
-        n = n * 26 + ord(ch) - 64
-    return n - 1
-
-
-class GridError(Exception):
-    pass
-
-
-class FakeSheet:
-    """
-    Una hoja como lista de filas por pestaña; registra cada escritura. Cada
-    pestaña tiene un tamaño fijo, y escribir fuera falla como en Google
-    ("exceeds grid limits"), que es como falló el primer --apply real.
-    """
-    def __init__(self, tabs, rows=1000, cols=None):
-        self.tabs = {t: [list(r) for r in rows_] for t, rows_ in tabs.items()}
-        self.grid = {t: [rows, cols or max(len(r) for r in rows_)] for t, rows_ in self.tabs.items()}
-        self.ops = []
-
-    def spreadsheets(self):
-        return self
-
-    def values(self):
-        return self
-
-    def _call(self, fn):
-        class C:
-            def execute(_):
-                return fn()
-        return C()
-
-    def get(self, spreadsheetId, range=None, fields=None):
-        if range is None:   # spreadsheets().get: tamaño de cada pestaña
-            return self._call(lambda: {"sheets": [
-                {"properties": {"sheetId": i, "title": t,
-                                "gridProperties": {"rowCount": g[0], "columnCount": g[1]}}}
-                for i, (t, g) in enumerate(self.grid.items())]})
-        tab = re.match(r"'(.+)'", range).group(1)
-        return self._call(lambda: {"values": [list(r) for r in self.tabs.get(tab, [])]})
-
-    def batchUpdate(self, spreadsheetId, body):
-        def run():
-            titles = list(self.grid)
-            for req in body.get("requests", []):
-                d = req["appendDimension"]
-                g = self.grid[titles[d["sheetId"]]]
-                g[0 if d["dimension"] == "ROWS" else 1] += d["length"]
-            self.ops.append(("grow",))
-            return {}
-        return self._call(run)
-
-    def clear(self, spreadsheetId, range, body):
-        tab = re.match(r"'(.+)'!1:1", range).group(1)
-        def run():
-            self.ops.append(("clear", tab))
-            self.tabs[tab][0] = []
-            return {}
-        return self._call(run)
-
-    def update(self, spreadsheetId, range, valueInputOption, body):
-        m = re.match(r"'(.+)'!([A-Z]+)1$", range)
-        tab, start = m.group(1), idx(m.group(2))
-        def run():
-            if start + len(body["values"][0]) > self.grid[tab][1]:
-                raise GridError(f"Range ('{tab}'!{m.group(2)}1) exceeds grid limits. "
-                                f"Max columns: {self.grid[tab][1]}")
-            self.ops.append(("update", tab, m.group(2)))
-            rows = self.tabs.setdefault(tab, [[]])
-            row = rows[0]
-            row.extend([""] * max(0, start + len(body["values"][0]) - len(row)))
-            for i, v in enumerate(body["values"][0]):
-                row[start + i] = v
-            return {}
-        return self._call(run)
+from fake_google import FakeSheet  # noqa: E402
 
 
 def main():
@@ -131,7 +55,7 @@ def main():
     sh = FakeSheet(base)
     left = S.sync(sh, "x", apply=False, out=lambda *a: None)
     check(sh.ops == [], "ninguna escritura", sh.ops)
-    check(left == 2, "reporta las 2 pestañas con faltantes", left)
+    check(left == 3, "reporta las 2 pestañas con faltantes y el Review Log que no existe", left)
 
     print("\n2. Con --apply")
     sh = FakeSheet(base)
@@ -170,10 +94,29 @@ def main():
                                 else getattr(P, fn))
         check("ensure_grid(" in src, f"{fn} amplía la hoja antes de escribir")
 
-    print("\n3. Una segunda corrida no cambia nada")
-    ops = len(sh.ops)
+    print("\n2d. Tablero de revisión")
+    check(P.TAB_REVIEW_LOG in sh.tabs and sh.tabs[P.TAB_REVIEW_LOG][0] == P.REVIEW_LOG_COLUMNS,
+          "se creó '9. Review Log' con sus columnas")
+    hdr = sh.tabs[P.TAB_PACKAGE][0]
+    for name, opts in P.REVIEW_DROPDOWNS.items():
+        check(sh.validations.get((P.TAB_PACKAGE, hdr.index(name))) == opts,
+              f"lista desplegable en {name}")
+    prot = [p for p in sh.protected.values() if p["tab"] == P.TAB_PACKAGE]
+    protected_cols = {c for p in prot for c in range(*p["cols"])}
+    team_cols = {hdr.index(c) for c in P.REVIEW_TRACKED_COLUMNS}
+    check(prot and all(p["warningOnly"] for p in prot), "columnas de Eva protegidas solo con aviso")
+    check(not (protected_cols & team_cols), "ninguna columna del equipo queda protegida")
+    check({hdr.index(c) for c in ("Semaforo", "Eva_Assessment_Link", "Stage_Suggested")} <= protected_cols,
+          "las de Eva sí")
+    check(any(p["tab"] == P.TAB_REVIEW_LOG for p in sh.protected.values()), "el Review Log también")
+
+    print("\n3. Una segunda corrida deja la hoja igual")
+    def state(x):
+        return (repr(x.tabs), repr(sorted(x.validations.items())),
+                sorted((p["tab"], p["cols"], p["description"]) for p in x.protected.values()))
+    snap = state(sh)
     S.sync(sh, "x", apply=True, out=lambda *a: None)
-    check(len(sh.ops) == ops, "idempotente")
+    check(state(sh) == snap, "idempotente: mismos datos, mismas listas, protecciones sin duplicar")
 
     print("\n" + "=" * 68)
     print(f"SINCRONIZAR ENCABEZADOS: {PASSED} ok, {len(FAILS)} fallidos")

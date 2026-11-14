@@ -17,6 +17,14 @@ Con --apply:
     Nunca borra, mueve ni renombra un encabezado que tenga datos debajo.
 Después vuelve a leer la fila 1 y termina con código 1 si todavía falta algo.
 
+También (desde 2026-11-13, el tablero de revisión):
+  - crea la pestaña "9. Review Log" si no existe;
+  - pone listas desplegables en las columnas del equipo (Status, Final_Stage,
+    Final_Semaforo, Agreement_With_Eva, Hard_Gate_Released);
+  - protege con AVISO las columnas de Eva en "6. Review Package" y todo el
+    "9. Review Log": quien intente editarlas ve una advertencia, nadie queda
+    bloqueado. Se rehace en cada --apply, sin duplicarse.
+
 Uso (desde scripts/, como antforce):
   python3 sync_sheet_headers.py --environment test
   python3 sync_sheet_headers.py --environment test --apply
@@ -33,6 +41,78 @@ def col_letter(n):
         n, rem = divmod(n - 1, 26)
         r = chr(65 + rem) + r
     return r
+
+
+PROTECT_EVA = "Eva pre-classification: written by Eva, edit with care"
+PROTECT_LOG = "Review log: append-only record, do not edit"
+
+
+def sheet_meta(api, sheet_id):
+    meta = api.spreadsheets().get(
+        spreadsheetId=sheet_id,
+        fields="sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),"
+               "protectedRanges(protectedRangeId,description))",
+    ).execute()
+    return {sh["properties"]["title"]: sh for sh in meta.get("sheets", [])}
+
+
+def ensure_tab(api, sheet_id, tab, out=print):
+    if tab in sheet_meta(api, sheet_id):
+        return False
+    api.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [
+        {"addSheet": {"properties": {"title": tab}}}]}).execute()
+    out(f"\n[{tab}] pestaña creada")
+    return True
+
+
+def review_board(api, sheet_id, out=print):
+    """Dropdowns on the team's columns and warning-only protection."""
+    meta = sheet_meta(api, sheet_id)
+    pkg, log = meta.get(P.TAB_PACKAGE), meta.get(P.TAB_REVIEW_LOG)
+    if not pkg:
+        return
+    headers, _ = tab_state(api, sheet_id, P.TAB_PACKAGE)
+    col = {h.lower(): i for i, h in enumerate(headers)}
+    rows = pkg["properties"]["gridProperties"]["rowCount"]
+    sid = pkg["properties"]["sheetId"]
+    reqs = []
+    for name, options in P.REVIEW_DROPDOWNS.items():
+        i = col.get(name.lower())
+        if i is None:
+            continue
+        reqs.append({"setDataValidation": {
+            "range": {"sheetId": sid, "startRowIndex": 1, "endRowIndex": rows,
+                      "startColumnIndex": i, "endColumnIndex": i + 1},
+            "rule": {"condition": {"type": "ONE_OF_LIST",
+                                   "values": [{"userEnteredValue": v} for v in options]},
+                     "showCustomUi": True, "strict": True}}})
+    # Drop our previous protections, then add them again: idempotent.
+    for sh in (pkg, log):
+        for pr in (sh or {}).get("protectedRanges", []) or []:
+            if pr.get("description") in (PROTECT_EVA, PROTECT_LOG):
+                reqs.append({"deleteProtectedRange": {"protectedRangeId": pr["protectedRangeId"]}})
+    team = {c.lower() for c in P.REVIEW_TRACKED_COLUMNS}
+    eva_cols = sorted(i for h, i in col.items() if h and h not in team)
+    blocks, start = [], None
+    for k, i in enumerate(eva_cols):
+        if start is None:
+            start = i
+        if k + 1 == len(eva_cols) or eva_cols[k + 1] != i + 1:
+            blocks.append((start, i + 1))
+            start = None
+    for a, b in blocks:
+        reqs.append({"addProtectedRange": {"protectedRange": {
+            "range": {"sheetId": sid, "startColumnIndex": a, "endColumnIndex": b},
+            "description": PROTECT_EVA, "warningOnly": True}}})
+    if log:
+        reqs.append({"addProtectedRange": {"protectedRange": {
+            "range": {"sheetId": log["properties"]["sheetId"]},
+            "description": PROTECT_LOG, "warningOnly": True}}})
+    if reqs:
+        api.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": reqs}).execute()
+    out(f"\n[{P.TAB_PACKAGE}] listas desplegables en {sum('setDataValidation' in r for r in reqs)} "
+        f"columnas; {len(blocks)} bloque(s) de columnas de Eva protegidos con aviso"
+        + ("; Review Log protegido con aviso" if log else ""))
 
 
 def tab_state(api, sheet_id, tab):
@@ -54,6 +134,12 @@ def sync(api, sheet_id, apply=False, out=print):
     """Returns the number of tabs still missing columns after the run."""
     still_missing = 0
     for tab, wanted in P.TAB_COLUMNS.items():
+        if tab not in sheet_meta(api, sheet_id):
+            if not apply:
+                out(f"\n[{tab}] no existe; --apply la crea")
+                still_missing += 1
+                continue
+            ensure_tab(api, sheet_id, tab, out)
         headers, data_rows = tab_state(api, sheet_id, tab)
         missing, extra = diff(headers, wanted)
         out(f"\n[{tab}] {len(headers)} encabezados, {data_rows} filas de datos")
@@ -88,6 +174,8 @@ def sync(api, sheet_id, apply=False, out=print):
             out(f"  ✗ todavía faltan: {', '.join(missing)}")
         else:
             out("  ✓ verificado")
+    if apply:
+        review_board(api, sheet_id, out)
     return still_missing
 
 

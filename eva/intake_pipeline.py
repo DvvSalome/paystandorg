@@ -91,6 +91,7 @@ WORKSPACE = Path(__file__).parent.parent
 CONFIG_DIR = WORKSPACE / "scripts" / "data"
 CACHE_DIR = WORKSPACE / "cache"
 RUNS_DIR = CACHE_DIR / "intake_runs"
+NOTES_DIR = WORKSPACE / "notes" / "intake"   # a constant so tests can point it elsewhere
 SECRETS_PATH = Path(os.path.expanduser("~/.openclaw/secrets/google_token.json"))
 
 # Tab names
@@ -103,6 +104,7 @@ TAB_PACKAGE = "6. Review Package"
 TAB_DASH = "7. Dashboard"
 TAB_LOG = "8. Process Log"
 TAB_REGISTRY = "0. Grantee Registry"
+TAB_REVIEW_LOG = "9. Review Log"
 
 ALL_TABS = [TAB_REGISTRY, TAB_FORM, TAB_CLEAN, TAB_CLASSIFY, TAB_FLAGS, TAB_SCORE, TAB_PACKAGE, TAB_DASH, TAB_LOG]
 
@@ -1185,6 +1187,259 @@ def _upload(drive_service, parent_id, name, data, mime, as_google_doc=False):
         body=body, media_body=media, supportsAllDrives=True, fields="id",
     ).execute()
     return created["id"]
+
+
+# ─── Eva assessment: the reasoning, one Google Doc per application ──────────
+ASSESSMENT_SUFFIX = "Eva assessment"
+CRITERIA = [
+    ("Resilience fit", "Score_Resilience_Fit", "Resilience_Fit_Reason", 30),
+    ("Measurable result", "Score_Measurable_Result", "Measurable_Result_Reason", 25),
+    ("Ability to deliver", "Score_Ability_To_Deliver", "Ability_To_Deliver_Reason", 20),
+    ("Value and sustainability", "Score_Value_Sustainability", "Value_Sustainability_Reason", 25),
+]
+FLAG_EXPLANATIONS = {
+    "ofac_flag": "The legal name (B1) or the legal representative (B3) matches an entry on the OFAC sanctions list.",
+    "eligibility_incomplete": "At least one eligibility statement (0.2) was left unchecked; K2 should explain why.",
+    "child_protection_missing": "The project involves children (I1) but there is no safeguarding policy or commitment (I2).",
+    "disclosure_present": "The applicant disclosed legal, financial, media or conflict-of-interest issues (K1).",
+    "missing_legal_name": "The application has no legal name (B1); no grantee record or folder was created.",
+    "name_mismatch": "The legal name (B1) does not match the registration document (C1).",
+    "address_mismatch": "The address (B4) does not match the registration document (C1).",
+    "missing_nonprofit_proof": "An NGO did not upload proof of nonprofit status, or no registration document was found.",
+    "bitcoin_rule_violation": "The impact appears to rest on price gains, downloads, wallets created, raw volume or sats given away.",
+    "budget_invalid": "The budget does not hold together (G2 is zero, larger than G1, or G4 does not add up to G2).",
+    "high_dependency": "The request is 75% or more of the organization's annual budget (context, not scored).",
+    "suspected_participant_identifiers": "A paragraph looks like it contains a participant list; only aggregate figures should be sent.",
+    "duplicate_application": "Another application in this batch has the same legal name or contact email.",
+    "documents_not_stored": "Some uploaded documents could not be copied to the applicant's folder.",
+    "nonsense_empty_required": "A required answer is empty.",
+    "nonsense_short_answer": "A paragraph answer is shorter than the 15-word minimum.",
+    "nonsense_one_word": "A paragraph question was answered with one word.",
+    "nonsense_repeated_text": "An answer repeats the same phrase several times.",
+    "nonsense_random_chars": "An answer looks like random characters.",
+    "nonsense_copy_paste": "Two different questions have the same answer.",
+    "nonsense_text_in_number": "A number field contains text.",
+    "nonsense_invalid_email": "An email address is not valid.",
+}
+
+
+def _reason_html(reason):
+    """'Group: item; item | Group: item' -> one list per group."""
+    out = []
+    for group in [g.strip() for g in str(reason or "").split(" | ") if g.strip()]:
+        label, _, rest = group.partition(": ")
+        items = [i.strip() for i in rest.split("; ") if i.strip()] if rest else []
+        if items:
+            out.append(f"<p><b>{_html(label)}</b></p><ul>"
+                       + "".join(f"<li>{_html(i)}</li>" for i in items) + "</ul>")
+        else:
+            out.append(f"<p>{_html(group)}</p>")
+    return "".join(out) or "<p>(no detail recorded)</p>"
+
+
+def assessment_html(app, board_url=""):
+    """
+    Eva's pre-classification of one application, written for the team to read
+    and dispute line by line (comments in Google Docs). Every statement comes
+    from the deterministic rules and cites the question it read. Applicant text
+    is escaped; this document never carries markup from the application.
+    """
+    f = app.get("fields", {}) or {}
+    c, sc, fl = app.get("classified", {}) or {}, app.get("score", {}) or {}, app.get("flags", {}) or {}
+    app_id = app.get("app_id", "")
+    name = f.get("B1", "").strip() or "(no legal name)"
+    h = [f"<html><head><meta charset='utf-8'><title>{_html(app_id)} · {ASSESSMENT_SUFFIX}</title></head><body>",
+         f"<h1>{_html(app_id)} · {_html(name)}</h1>",
+         "<p><i>Eva's pre-classification. It is a starting point for the team, not a decision: "
+         "comment on any line you support or dispute, and record the team's decision in the review board"
+         + (f" (<a href='{_html(board_url)}'>open the board</a>)" if board_url else "") + ".</i></p>"]
+
+    hold = sc.get("Semaforo_Hold", "")
+    h.append("<h2>1. Summary</h2><ul>")
+    h.append(f"<li><b>Traffic light: {_html(sc.get('Semaforo', ''))}</b>"
+             + (f" — held red by: {_html(hold)}" if hold else "") + "</li>")
+    h.append(f"<li>By score alone: {_html(sc.get('Semaforo_By_Score', ''))}, "
+             f"{_html(sc.get('Total_Normalized', ''))} / 100"
+             f" (raw {_html(sc.get('Total_Score', ''))} of {_html(sc.get('Score_Max_Available', ''))} available)</li>")
+    h.append(f"<li>Profile: {_html(c.get('Profile', ''))} · Route: {_html(c.get('Route', ''))}"
+             f" · Region: {_html(c.get('Region', ''))}</li>")
+    h.append(f"<li>Stage suggested: {_html(c.get('Stage_Suggested', '') or 'not inferable')}"
+             f" · Target declared (E12): {_html(c.get('Stage_Target', '') or 'none')}</li>")
+    h.append(f"<li>Pillars: {_html(c.get('Pillars_All', '') or c.get('Pillar', ''))}</li></ul>")
+
+    h.append("<h2>2. Hard gates</h2><ul>")
+    for g in HARD_GATE_FLAGS:
+        state = "TRIGGERED" if fl.get(g) == "YES" else "clear"
+        h.append(f"<li><b>{_html(g)}</b>: {state}"
+                 + (f" — {_html(FLAG_EXPLANATIONS.get(g, ''))}" if state == "TRIGGERED" else "") + "</li>")
+    h.append("</ul>")
+
+    h.append("<h2>3. Stage</h2>")
+    h.append(f"<p><b>Suggested current stage:</b> {_html(c.get('Stage_Suggested', '') or 'not inferable')}</p>")
+    h.append(f"<p><b>Why:</b> {_html(c.get('Stage_Justification', ''))}</p>")
+    h.append(f"<p><b>Target stage declared by the applicant (E12):</b> {_html(c.get('Stage_Target', '') or 'none')}"
+             f"{' · jump: ' + _html(c.get('Stage_Jump')) if c.get('Stage_Jump') else ''}</p>")
+    h.append(f"<p><b>Main measure (F1):</b> {_html(c.get('F1_Main_Measure', ''))} — "
+             f"matches the {_html(c.get('Measure_Basis', ''))} stage: {_html(c.get('Measure_Matches_Stage', ''))}"
+             f" (expected: {_html(c.get('Expected_Measures', ''))})</p>")
+    if c.get("Stage_Reached_2026"):
+        h.append(f"<p><b>Stage reached in 2026 (J2):</b> {_html(c.get('Stage_Reached_2026'))}</p>")
+    notes = [n for n in str(c.get("Classification_Notes", "")).split("; ") if n.strip()]
+    if notes:
+        h.append("<p><b>Classification notes:</b></p><ul>" + "".join(f"<li>{_html(n)}</li>" for n in notes) + "</ul>")
+
+    h.append("<h2>4. Pillars</h2>")
+    h.append(f"<p><b>{_html(c.get('Pillars_All', '') or c.get('Pillar', ''))}</b></p>")
+    h.append(f"<p><b>Why:</b> {_html(c.get('Pillar_Justification', ''))}</p>")
+
+    h.append("<h2>5. Scorecard</h2>")
+    for i, (label, pts_key, why_key, mx) in enumerate(CRITERIA, 1):
+        h.append(f"<h3>5.{i} {label}: {_html(sc.get(pts_key, ''))} of {mx}</h3>")
+        h.append(_reason_html(sc.get(why_key, "")))
+    if sc.get("Dependency_Note"):
+        h.append(f"<p><b>Dependency (context, not scored):</b> {_html(sc.get('Dependency_Note'))}</p>")
+    if sc.get("Scoring_Notes"):
+        h.append(f"<p><i>{_html(sc.get('Scoring_Notes'))}</i></p>")
+
+    h.append("<h2>6. Flags</h2>")
+    raised = [k for k, v in fl.items() if v == "YES" and k in FLAG_EXPLANATIONS]
+    if raised:
+        h.append("<ul>" + "".join(
+            f"<li><b>{_html(k)}</b>{' (hard gate)' if k in HARD_GATE_FLAGS else ''}: "
+            f"{_html(FLAG_EXPLANATIONS[k])}</li>" for k in raised) + "</ul>")
+        h.append(f"<p><b>Detail:</b> {_html(fl.get('Flags_Detail', ''))}</p>")
+    else:
+        h.append("<p>No flags.</p>")
+
+    h.append("<h2>7. Team review</h2>")
+    h.append("<p>The team's decision is recorded in the review board and every change is logged in "
+             "'9. Review Log'. When the case is closed, the final classification is added here.</p>")
+    h.append("</body></html>")
+    return "\n".join(h)
+
+
+def write_assessment_docs(drive_service, applications, package_rows, board_url=""):
+    """
+    Create "<APP-ID> · Eva assessment" in each applicant's folder and put its
+    link in the package row. Never overwrites: the assessment is the record of
+    what Eva said at intake. Returns a list of error strings; never raises.
+    """
+    rows = {r.get("app_id"): r for r in package_rows}
+    errors = []
+    for app in applications:
+        app_id = app.get("app_id", "")
+        row = rows.get(app_id)
+        folder = app.get("drive_folder_id", "")
+        if row is None:
+            continue
+        if not drive_service or not folder:
+            row["Eva_Assessment_Link"] = "not created: no applicant folder"
+            errors.append(f"{app_id}: no applicant folder")
+            continue
+        name = f"{app_id} · {ASSESSMENT_SUFFIX}"
+        try:
+            existing = drive_find_child(drive_service, folder, name)
+            if existing:
+                fid = existing
+            else:
+                fid = _upload(drive_service, folder, name,
+                              assessment_html(app, board_url).encode("utf-8"),
+                              "text/html", as_google_doc=True)
+            row["Eva_Assessment_Link"] = drive_file_url(fid, google_doc=True)
+        except Exception as e:
+            row["Eva_Assessment_Link"] = f"not created: {type(e).__name__}"
+            errors.append(f"{app_id}: {type(e).__name__}: {str(e)[:120]}")
+    return errors
+
+
+def _col_letter(n):
+    r = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        r = chr(65 + rem) + r
+    return r
+
+
+def review_snapshot_path(env):
+    if env not in ENVIRONMENTS:
+        raise ValueError(f"unknown environment for review snapshot: {env!r}")
+    return CACHE_DIR / f"review_snapshot.{env}.json"
+
+
+def review_sync(sheets_api, sheet_id, env, run_id):
+    """
+    Turn the team's edits on the board into the formal record.
+
+    Compares the tracked columns of every row in "6. Review Package" with the
+    snapshot taken on the previous run and appends one row per change to
+    "9. Review Log" (time, application, field, old value, new value, who).
+    When Status changes, Status_Since is updated on that application's row.
+    Rows are found by App_ID, never by position, so the team can sort and
+    filter the board freely.
+
+    Limits, stated so nobody reads more into the log than it holds: changes are
+    seen at run time, so two edits to one cell between runs appear as one;
+    "By" is the Reviewed_By column at that moment, because the Sheets API does
+    not say who edited a cell.
+
+    The snapshot is saved only after the log rows are written, so a failed
+    write is retried on the next run instead of losing the changes.
+    Returns {"logged": n, "status_changes": n}.
+    """
+    data = read_sheet(sheets_api, sheet_id, TAB_PACKAGE) or []
+    if not data:
+        return {"logged": 0, "status_changes": 0}
+    headers = [str(x).strip() for x in data[0]]
+    idx = {hname.lower(): i for i, hname in enumerate(headers)}
+    if "app_id" not in idx:
+        raise ValueError(f"'{TAB_PACKAGE}' has no App_ID column")
+
+    def cell(row, col):
+        i = idx.get(col.lower())
+        return str(row[i]).strip() if i is not None and i < len(row) else ""
+
+    path = review_snapshot_path(env)
+    try:
+        before = json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        before = {}
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    after, log_rows, status_rows = {}, [], []
+    for r_i, row in enumerate(data[1:], start=2):
+        app_id = cell(row, "App_ID")
+        if not app_id:
+            continue
+        current = {col: cell(row, col) for col in REVIEW_TRACKED_COLUMNS}
+        after[app_id] = current
+        by = current.get("Reviewed_By", "")
+        old = before.get(app_id)
+        if old is None:
+            log_rows.append([now, app_id, "added_to_board", "Status", "",
+                             current.get("Status", ""), "Eva", run_id])
+            continue
+        for col in REVIEW_TRACKED_COLUMNS:
+            if old.get(col, "") != current[col]:
+                log_rows.append([now, app_id, "changed", col, old.get(col, ""),
+                                 current[col], by, run_id])
+                if col == "Status":
+                    status_rows.append(r_i)
+    for app_id in before:
+        if app_id not in after:
+            log_rows.append([now, app_id, "removed_from_board", "", "", "", "", run_id])
+
+    if log_rows:
+        append_sheet(sheets_api, sheet_id, TAB_REVIEW_LOG, log_rows)
+    if status_rows and "status_since" in idx:
+        letter = _col_letter(idx["status_since"] + 1)
+        for r_i in status_rows:
+            sheets_api.spreadsheets().values().update(
+                spreadsheetId=sheet_id, range=f"'{TAB_PACKAGE}'!{letter}{r_i}",
+                valueInputOption="RAW", body={"values": [[now]]}).execute()
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(after, ensure_ascii=False, indent=1))
+    os.replace(tmp, path)
+    return {"logged": len(log_rows), "status_changes": len(status_rows)}
 
 
 def store_application_documents(drive_service, folder_id, app_id, fields,
@@ -4532,6 +4787,17 @@ def step_package(applications, run_id):
             # both written at ingest (store_application_documents).
             "One_Pager_Link": (app.get("documents") or {}).get("copy_url", ""),
             "Documents_Folder": drive_folder_url(app.get("drive_folder_id", "")),
+            "Stage_Suggested": classified.get("Stage_Suggested", ""),
+            "Stage_Target": classified.get("Stage_Target", ""),
+            "Score_Resilience_Fit": score.get("Score_Resilience_Fit", ""),
+            "Score_Measurable_Result": score.get("Score_Measurable_Result", ""),
+            "Score_Ability_To_Deliver": score.get("Score_Ability_To_Deliver", ""),
+            "Score_Value_Sustainability": score.get("Score_Value_Sustainability", ""),
+            "Total_Normalized": score.get("Total_Normalized", ""),
+            "Semaforo_Hold": score.get("Semaforo_Hold", ""),
+            "Eva_Assessment_Link": "",   # set by write_assessment_docs()
+            "Status": "New",
+            "Status_Since": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
 
         package_rows.append(package_row)
@@ -4553,7 +4819,7 @@ def step_package(applications, run_id):
         json.dump(package_rows, f, indent=2)
 
     # Generate markdown review package
-    md_path = WORKSPACE / "notes" / "intake" / f"{run_id}-review-package.md"
+    md_path = NOTES_DIR / f"{run_id}-review-package.md"
     md_path.parent.mkdir(parents=True, exist_ok=True)
     with open(md_path, 'w') as f:
         f.write(f"# Review Package — Run {run_id}\n\n")
@@ -4602,6 +4868,32 @@ def step_package(applications, run_id):
 
 # ─── P1.3: Schema validation ─────────────────────────────────────────────────
 # Expected first column header for each tab — used to detect schema drift
+# ─── Review board (decided 2026-11-13) ─────────────────────────────────────
+# One row per application in "6. Review Package" is the board: Eva's
+# pre-classification on the left, the team's review on the right. The team's
+# columns are never written by the pipeline after the row is created; the
+# Status column is shared (Eva sets "New", the team moves it). Every change the
+# team makes is appended to "9. Review Log" by review_sync(), which is the
+# formal record. The reasoning itself is a Google Doc per application
+# ("<APP-ID> · Eva assessment") in the applicant's folder, where the team can
+# comment line by line. Eva pre-classifies; the team decides.
+REVIEW_STATUSES = ["New", "In review", "Decided", "Closed"]
+REVIEW_TEAM_COLUMNS = [
+    "Assigned_To", "Final_Stage", "Final_Pillars", "Final_Semaforo",
+    "Agreement_With_Eva", "Disputed_Items", "Hard_Gate_Released",
+    "Hard_Gate_Release_Reason", "Team_Comment", "Reviewed_By", "Review_Date",
+]
+REVIEW_TRACKED_COLUMNS = ["Status"] + REVIEW_TEAM_COLUMNS
+REVIEW_DROPDOWNS = {
+    "Status": REVIEW_STATUSES,
+    "Final_Stage": VALID_STAGES,
+    "Final_Semaforo": ["GREEN", "YELLOW", "RED"],
+    "Agreement_With_Eva": ["Yes", "Partial", "No"],
+    "Hard_Gate_Released": ["Yes", "No", "Not applicable"],
+}
+REVIEW_LOG_COLUMNS = ["Log_Time", "App_ID", "Event", "Field", "Old_Value",
+                      "New_Value", "By", "Run_ID"]
+
 # The columns step_write puts in each results tab. The sheet's row 1 must
 # contain every one of them (any order, case-insensitive): rows are written by
 # header name, and a value whose column is missing is dropped. On 2026-11-13
@@ -4662,7 +4954,12 @@ TAB_COLUMNS = {
         "Pillars_All", "Region", "Is_Renewal", "Total_Score", "Semaforo", "Flags_Summary",
         "Budget_Summary", "Contact_Summary", "Suggested_Next_Step", "One_Pager_Link",
         "Documents_Folder",
-    ],
+        # Eva's reasoning, summarised for the board (decided 2026-11-13)
+        "Stage_Suggested", "Stage_Target", "Score_Resilience_Fit", "Score_Measurable_Result",
+        "Score_Ability_To_Deliver", "Score_Value_Sustainability", "Total_Normalized",
+        "Semaforo_Hold", "Eva_Assessment_Link", "Status", "Status_Since",
+    ] + REVIEW_TEAM_COLUMNS,
+    TAB_REVIEW_LOG: REVIEW_LOG_COLUMNS,
 }
 
 EXPECTED_TAB_HEADERS = {
@@ -5064,6 +5361,25 @@ def update_dashboard(sheets_api, spreadsheet_id, applications, run_id):
 
 # ─── Main Pipeline ─────────────────────────────────────────────────────────
 
+def run_review_sync(sheets_api, config, run_id, all_logs):
+    """review_sync with the pipeline's error handling: a failure is logged and
+    reported, never fatal, and the changes are retried on the next run."""
+    start = time.time()
+    try:
+        res = review_sync(sheets_api, config['active']['intake_sheet_id'],
+                          config['active_env'], run_id)
+        print(f"[REVIEW] {res['logged']} change(s) logged, {res['status_changes']} status change(s)")
+        all_logs.append({"step": 8, "step_name": "REVIEW", "status": "success",
+                         "apps_in": res['logged'], "apps_out": res['logged'], "errors": "",
+                         "warnings": "", "duration_seconds": round(time.time() - start, 2)})
+    except Exception as e:
+        print(f"[REVIEW] ERROR: {type(e).__name__}: {e}")
+        send_slack_notification(f"Review log sync failed — Run {run_id}: {e}", is_error=True)
+        all_logs.append({"step": 8, "step_name": "REVIEW", "status": "error",
+                         "apps_in": 0, "apps_out": 0, "errors": f"{type(e).__name__}: {str(e)[:200]}",
+                         "warnings": "", "duration_seconds": round(time.time() - start, 2)})
+
+
 def run_pipeline(args):
     """Run the full intake pipeline or a single step."""
     config = load_config()
@@ -5105,6 +5421,9 @@ def run_pipeline(args):
 
             if not applications:
                 print("\nNo new applications. Pipeline complete.")
+                # The team works on the board between intakes; their edits are
+                # logged on every run, not only when new applications arrive.
+                run_review_sync(sheets_api, config, run_id, all_logs)
                 try:
                     step_write(sheets_api, [], [], config, run_id, all_logs, trigger_type, triggered_by)
                 except Exception as e:
@@ -5194,6 +5513,11 @@ def run_pipeline(args):
             result = step_package(applications, run_id)
             package_rows = result['package_rows']
             all_logs.append(result['log'])
+            doc_errors = write_assessment_docs(
+                drive_api, applications, package_rows,
+                board_url=config['active'].get('intake_sheet_url', ''))
+            if doc_errors:
+                print(f"  ⚠️  Eva assessment not created for {len(doc_errors)}: {'; '.join(doc_errors)[:300]}")
         except Exception as e:
             pipeline_failed = True
             pipeline_error_msg = f"Step 6 (PACKAGE) failed: {type(e).__name__}: {str(e)}"
@@ -5220,6 +5544,9 @@ def run_pipeline(args):
             all_logs.append({"step": 7, "step_name": "WRITE", "status": "error",
                 "apps_in": len(applications), "apps_out": 0, "errors": str(e), "warnings": "",
                 "duration_seconds": 0})
+
+    if args.run_all:
+        run_review_sync(sheets_api, config, run_id, all_logs)
 
     # Print summary
     print(f"\n{'='*60}")

@@ -154,7 +154,7 @@ def main():
     install_google_stubs()
     m = importlib.import_module("intake_pipeline")
     tmp = Path(tempfile.mkdtemp(prefix="form-options-"))
-    m.CACHE_DIR, m.RUNS_DIR = tmp, tmp / "intake_runs"
+    m.CACHE_DIR, m.RUNS_DIR, m.NOTES_DIR = tmp, tmp / "intake_runs", tmp / "notes"
     m.download_ofac_sdn = lambda *a, **k: ([], {
         "source": "test", "download_date": "", "entry_count": 0,
         "cache_path": "", "cache_age_days": 0, "cache_fresh": True})

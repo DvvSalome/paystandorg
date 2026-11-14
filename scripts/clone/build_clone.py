@@ -17,8 +17,25 @@ EXT = {'image/avif': 'avif', 'font/woff2': 'woff2', 'image/svg+xml': 'svg', 'ima
 norm = lambda u: urllib.parse.unquote(H.unescape(u))
 def https(u): return ('https:' + u) if u.startswith('//') else u.replace('http://', 'https://', 1)
 
-shutil.rmtree(ASSETS, ignore_errors=True); ASSETS.mkdir(parents=True)
+# Check the capture BEFORE deleting anything. This used to rmtree site/wix/
+# on line 1 and read saved.json on line 2, so running the script without a
+# capture — which is easy, since the capture needs network access and lives
+# outside the repo — wiped 21 assets and then died on FileNotFoundError,
+# leaving the page broken with nothing to rebuild it from. Happened on
+# 2026-11-13. Validate first, destroy second.
+for need in ('saved.json', 'page-1440.html'):
+    if not (CAP / need).exists():
+        sys.exit(f"{CAP / need} not found. Run the capture first:\n"
+                 f"  node scripts/clone/capture.js 1440   (also 768 and 390)\n"
+                 f"Nothing was deleted.")
 saved = json.load(open(CAP / 'saved.json'))
+missing = [v['file'] for v in saved.values() if not (CAP / 'raw' / v['file']).exists()]
+if missing:
+    sys.exit(f"The capture is incomplete: {len(missing)} files listed in "
+             f"saved.json are not in {CAP / 'raw'} (e.g. {missing[0]}). "
+             f"Re-run the capture. Nothing was deleted.")
+
+shutil.rmtree(ASSETS, ignore_errors=True); ASSETS.mkdir(parents=True)
 local = {}
 for url, v in saved.items():
     name = f"{v['file']}.{EXT.get(v['type'], 'bin')}"

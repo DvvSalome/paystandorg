@@ -342,5 +342,91 @@
     { id: "K5", s: "K", type: "submitter", req: true,
       label: "Name of the person submitting, and date" }
   ];
-  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F };
+
+  /* What a complete answer is, for questions with more than one part.
+
+     Before this, a question counted as answered as soon as its combined value
+     was not empty — so a D1 with only a name, an E1 with only a title, a G3
+     of "Yes" with no funder named, or an E10 with one cell typed all passed
+     as complete. The help text of each question says what it needs; these
+     rules say the same thing in code.
+
+     It lives here, in questions.js, because this is the one file both the
+     browser and the Edge Function load (tests/questions.test.mjs keeps the
+     two copies identical). The form uses it to block moving on and to say
+     what is missing; the server uses it to refuse an incomplete submission.
+
+     v        the answers, including the "ID__part" sub-values
+     hasFile  function(id) -> true when a file is attached to that question
+     returns  the list of missing parts, in plain words; empty = complete */
+  function missingParts(f, v, hasFile) {
+    var t = function (x) { return typeof x === "string" ? x.trim() : (x == null ? "" : String(x)); };
+    var miss = [];
+    switch (f.type) {
+      case "composite":
+        f.parts.forEach(function (p) {
+          if (!p.opt && !t(v[f.id + "__" + p.k])) miss.push(p.ph.toLowerCase());
+        });
+        break;
+      case "titlesummary":
+        if (!t(v[f.id + "__title"])) miss.push("project title");
+        if (!t(v[f.id + "__summary"])) miss.push("summary");
+        break;
+      case "datepair":
+        if (!t(v[f.id + "__start"])) miss.push("start date");
+        if (!t(v[f.id + "__end"])) miss.push("end date");
+        break;
+      case "valuedate":
+        if (!t(v[f.id + "__value"])) miss.push("figure");
+        if (!t(v[f.id + "__date"])) miss.push("date");
+        break;
+      case "baseline":
+        if (v[f.id + "__mode"] === "plan") { if (!t(v[f.id + "__plan"])) miss.push("how and when you will collect it"); }
+        else {
+          if (!t(v[f.id + "__value"])) miss.push("figure today");
+          if (!t(v[f.id + "__date"])) miss.push("date measured");
+        }
+        break;
+      case "milestones": {
+        // "Three milestones. Each needs a target date and the evidence."
+        var rows = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        for (var i = 0; i < 3; i++) {
+          var r = rows[i] || {}, need = [];
+          if (!t(r.milestone)) need.push("milestone");
+          if (!t(r.date)) need.push("target date");
+          if (!t(r.evidence)) need.push("evidence");
+          if (need.length) miss.push("milestone " + (i + 1) + ": " + need.join(", "));
+        }
+        break;
+      }
+      case "funders": {
+        var yn = v[f.id + "__yn"];
+        if (!yn) { miss.push("yes or no"); break; }
+        if (yn !== "Yes") break;
+        var fr = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        var complete = 0;
+        fr.forEach(function (r, i) {
+          var started = t(r.funder) || t(r.amount) || t(r.status);
+          if (!started) return;
+          var need = [];
+          if (!t(r.funder)) need.push("funder");
+          if (!t(r.amount)) need.push("amount");
+          if (!t(r.status)) need.push("status");
+          if (need.length) miss.push("funder " + (i + 1) + ": " + need.join(", "));
+          else complete++;
+        });
+        if (!complete && !miss.length) miss.push("at least one funder, with amount and status");
+        break;
+      }
+      case "safeguard":
+        // "Upload your policy, or confirm one will be in place before
+        //  funding, and name the person responsible."
+        if (!(hasFile && hasFile(f.id)) && !v[f.id + "__committed"]) miss.push("the policy file, or confirm one will be in place");
+        if (!t(v[f.id + "__person"])) miss.push("name of the person responsible");
+        break;
+    }
+    return miss;
+  }
+
+  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F, missingParts: missingParts };
 })();

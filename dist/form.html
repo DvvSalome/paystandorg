@@ -118,6 +118,8 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .card-err { font-size: .9rem; color: #7a2412; }
 /* inline format error under an email input */
 .fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
+/* "Still needed: …" under a question answered only in part */
+.partnote { margin: 8px 0 0; font-size: .9rem; color: #7a2412; }
 input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }
@@ -568,7 +570,93 @@ window.GA27_CONFIG = {
     { id: "K5", s: "K", type: "submitter", req: true,
       label: "Name of the person submitting, and date" }
   ];
-  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F };
+
+  /* What a complete answer is, for questions with more than one part.
+
+     Before this, a question counted as answered as soon as its combined value
+     was not empty — so a D1 with only a name, an E1 with only a title, a G3
+     of "Yes" with no funder named, or an E10 with one cell typed all passed
+     as complete. The help text of each question says what it needs; these
+     rules say the same thing in code.
+
+     It lives here, in questions.js, because this is the one file both the
+     browser and the Edge Function load (tests/questions.test.mjs keeps the
+     two copies identical). The form uses it to block moving on and to say
+     what is missing; the server uses it to refuse an incomplete submission.
+
+     v        the answers, including the "ID__part" sub-values
+     hasFile  function(id) -> true when a file is attached to that question
+     returns  the list of missing parts, in plain words; empty = complete */
+  function missingParts(f, v, hasFile) {
+    var t = function (x) { return typeof x === "string" ? x.trim() : (x == null ? "" : String(x)); };
+    var miss = [];
+    switch (f.type) {
+      case "composite":
+        f.parts.forEach(function (p) {
+          if (!p.opt && !t(v[f.id + "__" + p.k])) miss.push(p.ph.toLowerCase());
+        });
+        break;
+      case "titlesummary":
+        if (!t(v[f.id + "__title"])) miss.push("project title");
+        if (!t(v[f.id + "__summary"])) miss.push("summary");
+        break;
+      case "datepair":
+        if (!t(v[f.id + "__start"])) miss.push("start date");
+        if (!t(v[f.id + "__end"])) miss.push("end date");
+        break;
+      case "valuedate":
+        if (!t(v[f.id + "__value"])) miss.push("figure");
+        if (!t(v[f.id + "__date"])) miss.push("date");
+        break;
+      case "baseline":
+        if (v[f.id + "__mode"] === "plan") { if (!t(v[f.id + "__plan"])) miss.push("how and when you will collect it"); }
+        else {
+          if (!t(v[f.id + "__value"])) miss.push("figure today");
+          if (!t(v[f.id + "__date"])) miss.push("date measured");
+        }
+        break;
+      case "milestones": {
+        // "Three milestones. Each needs a target date and the evidence."
+        var rows = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        for (var i = 0; i < 3; i++) {
+          var r = rows[i] || {}, need = [];
+          if (!t(r.milestone)) need.push("milestone");
+          if (!t(r.date)) need.push("target date");
+          if (!t(r.evidence)) need.push("evidence");
+          if (need.length) miss.push("milestone " + (i + 1) + ": " + need.join(", "));
+        }
+        break;
+      }
+      case "funders": {
+        var yn = v[f.id + "__yn"];
+        if (!yn) { miss.push("yes or no"); break; }
+        if (yn !== "Yes") break;
+        var fr = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        var complete = 0;
+        fr.forEach(function (r, i) {
+          var started = t(r.funder) || t(r.amount) || t(r.status);
+          if (!started) return;
+          var need = [];
+          if (!t(r.funder)) need.push("funder");
+          if (!t(r.amount)) need.push("amount");
+          if (!t(r.status)) need.push("status");
+          if (need.length) miss.push("funder " + (i + 1) + ": " + need.join(", "));
+          else complete++;
+        });
+        if (!complete && !miss.length) miss.push("at least one funder, with amount and status");
+        break;
+      }
+      case "safeguard":
+        // "Upload your policy, or confirm one will be in place before
+        //  funding, and name the person responsible."
+        if (!(hasFile && hasFile(f.id)) && !v[f.id + "__committed"]) miss.push("the policy file, or confirm one will be in place");
+        if (!t(v[f.id + "__person"])) miss.push("name of the person responsible");
+        break;
+    }
+    return miss;
+  }
+
+  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F, missingParts: missingParts };
 })();
 
 </script>
@@ -593,7 +681,11 @@ window.GA27_CONFIG = {
   var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
   var LS_KEY = "ga27-draft-code";
   var secUI = {};          // section id -> { btn, msg, flash }
-  var secProg = {};        // section id -> el progreso de su encabezado
+  var secProg = {};
+  var MULTIPART = { composite: 1, titlesummary: 1, datepair: 1, valuedate: 1, baseline: 1,
+                    milestones: 1, funders: 1, safeguard: 1 };
+  var partNotes = {};      // question id -> the "Still needed: …" note under it
+  var touched = {};        // question id -> focus has left it at least once        // section id -> el progreso de su encabezado
   var busySaving = false;
   var form = document.getElementById("form");
 
@@ -1162,6 +1254,17 @@ window.GA27_CONFIG = {
       }
     }
     if (first) { first.id = first.id || "c-" + f.id; lab.htmlFor = first.id; }
+    if (MULTIPART[f.type]) {
+      var pn = el("p", "partnote"); pn.hidden = true; pn.setAttribute("aria-live", "polite");
+      wrap.appendChild(pn);
+      partNotes[f.id] = pn;
+      // "Touched" = focus left the whole question, not just moved between
+      // its own parts — no nagging while someone is still filling it in.
+      wrap.addEventListener("focusout", function (e) {
+        if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+        touched[f.id] = true; refresh();
+      });
+    }
     return wrap;
   }
 
@@ -1179,8 +1282,19 @@ window.GA27_CONFIG = {
       if (f.req === "all") { if (!v || v.length < f.options.length) out.push(f.id); }
       else if (typeof f.req === "number") { if (!v || v.length < f.req) out.push(f.id); }
       else if (!v || (typeof v === "string" && !v.trim())) out.push(f.id);
+      // A non-empty combined value is not enough for a question with parts:
+      // every part it asks for has to be there (questions.js, missingParts).
+      else if (partsOf(f).length) out.push(f.id);
     });
     return out;
+  }
+  function hasFile(id) { return !!FILES[id] || !!savedFiles[id]; }
+  function partsOf(f) { return G.missingParts ? G.missingParts(f, V, hasFile) : []; }
+  // The message for a required question that is not complete: name what is
+  // missing when it was started, so "required" never hides "almost".
+  function missingMessage(f) {
+    var parts = partsOf(f);
+    return parts.length && V[f.id] ? "Still needed: " + parts.join("; ") + "." : "This question is required.";
   }
 
   // Extra rules a person can fix: returns { id: message }.
@@ -1269,6 +1383,15 @@ window.GA27_CONFIG = {
     });
 
     syncSaveEmail();
+    // Live note under a multi-part question once the person has left it
+    // half-answered: "Still needed: phone; title." It clears itself as soon
+    // as the last part is filled.
+    F.forEach(function (f) {
+      var note = partNotes[f.id]; if (!note) return;
+      var parts = visible(f) && touched[f.id] && V[f.id] ? partsOf(f) : [];
+      note.hidden = !parts.length;
+      note.textContent = parts.length ? "Still needed: " + parts.join("; ") + "." : "";
+    });
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
@@ -1711,7 +1834,7 @@ window.GA27_CONFIG = {
   sub.addEventListener("click", function () {
     clearErrors(); setStatus("", "");
     var miss = missingIds(), probs = problems();
-    miss.forEach(function (id) { mark(id, "This question is required."); });
+    miss.forEach(function (id) { mark(id, missingMessage(F.filter(function (x) { return x.id === id; })[0])); });
     Object.keys(probs).forEach(function (id) { if (miss.indexOf(id) === -1) mark(id, probs[id]); });
     var bad = F.filter(function (f) { return miss.indexOf(f.id) !== -1 || probs[f.id]; });
     if (bad.length) {

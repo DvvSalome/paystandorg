@@ -350,13 +350,100 @@ globalThis.window = globalThis.window || {};
     { id: "K5", s: "K", type: "submitter", req: true,
       label: "Name of the person submitting, and date" }
   ];
-  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F };
+
+  /* What a complete answer is, for questions with more than one part.
+
+     Before this, a question counted as answered as soon as its combined value
+     was not empty — so a D1 with only a name, an E1 with only a title, a G3
+     of "Yes" with no funder named, or an E10 with one cell typed all passed
+     as complete. The help text of each question says what it needs; these
+     rules say the same thing in code.
+
+     It lives here, in questions.js, because this is the one file both the
+     browser and the Edge Function load (tests/questions.test.mjs keeps the
+     two copies identical). The form uses it to block moving on and to say
+     what is missing; the server uses it to refuse an incomplete submission.
+
+     v        the answers, including the "ID__part" sub-values
+     hasFile  function(id) -> true when a file is attached to that question
+     returns  the list of missing parts, in plain words; empty = complete */
+  function missingParts(f, v, hasFile) {
+    var t = function (x) { return typeof x === "string" ? x.trim() : (x == null ? "" : String(x)); };
+    var miss = [];
+    switch (f.type) {
+      case "composite":
+        f.parts.forEach(function (p) {
+          if (!p.opt && !t(v[f.id + "__" + p.k])) miss.push(p.ph.toLowerCase());
+        });
+        break;
+      case "titlesummary":
+        if (!t(v[f.id + "__title"])) miss.push("project title");
+        if (!t(v[f.id + "__summary"])) miss.push("summary");
+        break;
+      case "datepair":
+        if (!t(v[f.id + "__start"])) miss.push("start date");
+        if (!t(v[f.id + "__end"])) miss.push("end date");
+        break;
+      case "valuedate":
+        if (!t(v[f.id + "__value"])) miss.push("figure");
+        if (!t(v[f.id + "__date"])) miss.push("date");
+        break;
+      case "baseline":
+        if (v[f.id + "__mode"] === "plan") { if (!t(v[f.id + "__plan"])) miss.push("how and when you will collect it"); }
+        else {
+          if (!t(v[f.id + "__value"])) miss.push("figure today");
+          if (!t(v[f.id + "__date"])) miss.push("date measured");
+        }
+        break;
+      case "milestones": {
+        // "Three milestones. Each needs a target date and the evidence."
+        var rows = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        for (var i = 0; i < 3; i++) {
+          var r = rows[i] || {}, need = [];
+          if (!t(r.milestone)) need.push("milestone");
+          if (!t(r.date)) need.push("target date");
+          if (!t(r.evidence)) need.push("evidence");
+          if (need.length) miss.push("milestone " + (i + 1) + ": " + need.join(", "));
+        }
+        break;
+      }
+      case "funders": {
+        var yn = v[f.id + "__yn"];
+        if (!yn) { miss.push("yes or no"); break; }
+        if (yn !== "Yes") break;
+        var fr = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        var complete = 0;
+        fr.forEach(function (r, i) {
+          var started = t(r.funder) || t(r.amount) || t(r.status);
+          if (!started) return;
+          var need = [];
+          if (!t(r.funder)) need.push("funder");
+          if (!t(r.amount)) need.push("amount");
+          if (!t(r.status)) need.push("status");
+          if (need.length) miss.push("funder " + (i + 1) + ": " + need.join(", "));
+          else complete++;
+        });
+        if (!complete && !miss.length) miss.push("at least one funder, with amount and status");
+        break;
+      }
+      case "safeguard":
+        // "Upload your policy, or confirm one will be in place before
+        //  funding, and name the person responsible."
+        if (!(hasFile && hasFile(f.id)) && !v[f.id + "__committed"]) miss.push("the policy file, or confirm one will be in place");
+        if (!t(v[f.id + "__person"])) miss.push("name of the person responsible");
+        break;
+    }
+    return miss;
+  }
+
+  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F, missingParts: missingParts };
 })();
 
 // ---- validation (from supabase/functions/_shared/validate.js) ----
 // Server-side validation for a Grant Application 2027 submission.
 // Pure JS (no Deno or Node APIs) so it runs in the Edge Function and in node tests.
 // Never trust the browser: every rule the form enforces is re-checked here.
+
 
 const FILE_QUESTIONS = ["C1", "C2", "I2", "J3"];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -403,6 +490,10 @@ function validate(G, answers, files) {
   const v = answers;
   const st = deriveState(v);
   const visible = (f) => { if (!f.showIf) return true; try { return !!f.showIf(v, st); } catch { return true; } };
+  // Files declared in this submission, for questions whose completeness
+  // depends on one (I2: a policy file OR a commitment, plus a named person).
+  const declared = new Set((files || []).map((x) => x && x.question));
+  const hasFile = (id) => declared.has(id);
 
   for (const f of G.FIELDS) {
     if (!visible(f)) continue;
@@ -413,19 +504,24 @@ function validate(G, answers, files) {
       else if (typeof f.req === "number") ok = Array.isArray(val) && val.length >= f.req;
       else ok = typeof val === "string" ? val.trim() !== "" : !!val;
       if (!ok) { errors[f.id] = "required"; continue; }
+      // A non-empty combined value is not a complete answer for a question
+      // with parts. Same rule as the form: questions.js, missingParts.
+      const parts = G.missingParts ? G.missingParts(f, v, hasFile) : [];
+      if (parts.length) { errors[f.id] = "incomplete: " + parts.join("; "); continue; }
     }
     if (val == null || val === "") continue;
     if (f.options && (f.type === "radio") && !f.options.includes(val)) errors[f.id] = "invalid option";
     if (f.options && f.type === "checks" && Array.isArray(val) && !val.every((x) => f.options.includes(x))) errors[f.id] = "invalid option";
     if (f.type === "country" && !G.COUNTRIES.includes(val)) errors[f.id] = "unknown country";
     if (f.type === "number" && (num(val) == null || num(val) < (f.min != null ? f.min : 0))) errors[f.id] = "invalid number";
-    if (f.type === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) errors[f.id] = "invalid email";
+    if (f.type === "email" && !isEmail(val)) errors[f.id] = "invalid email";
     if (f.maxWords) {
       const text = v[f.id + "__summary"] != null ? v[f.id + "__summary"] : val;
       if (words(text) > f.maxWords) errors[f.id] = "too long";
     }
   }
-  if (v.D1__email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D1__email && !isEmail(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D3__email && !isEmail(v.D3__email)) errors.D3 = "invalid email";
   const dp = v.E2__months; if (v.E2 && !(dp > 0)) errors.E2 = "end date must be after start";
 
   const g1 = num(v.G1), g2 = num(v.G2);

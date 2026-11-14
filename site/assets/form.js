@@ -18,7 +18,11 @@
   var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
   var LS_KEY = "ga27-draft-code";
   var secUI = {};          // section id -> { btn, msg, flash }
-  var secProg = {};        // section id -> el progreso de su encabezado
+  var secProg = {};
+  var MULTIPART = { composite: 1, titlesummary: 1, datepair: 1, valuedate: 1, baseline: 1,
+                    milestones: 1, funders: 1, safeguard: 1 };
+  var partNotes = {};      // question id -> the "Still needed: …" note under it
+  var touched = {};        // question id -> focus has left it at least once        // section id -> el progreso de su encabezado
   var busySaving = false;
   var form = document.getElementById("form");
 
@@ -587,6 +591,17 @@
       }
     }
     if (first) { first.id = first.id || "c-" + f.id; lab.htmlFor = first.id; }
+    if (MULTIPART[f.type]) {
+      var pn = el("p", "partnote"); pn.hidden = true; pn.setAttribute("aria-live", "polite");
+      wrap.appendChild(pn);
+      partNotes[f.id] = pn;
+      // "Touched" = focus left the whole question, not just moved between
+      // its own parts — no nagging while someone is still filling it in.
+      wrap.addEventListener("focusout", function (e) {
+        if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+        touched[f.id] = true; refresh();
+      });
+    }
     return wrap;
   }
 
@@ -604,8 +619,19 @@
       if (f.req === "all") { if (!v || v.length < f.options.length) out.push(f.id); }
       else if (typeof f.req === "number") { if (!v || v.length < f.req) out.push(f.id); }
       else if (!v || (typeof v === "string" && !v.trim())) out.push(f.id);
+      // A non-empty combined value is not enough for a question with parts:
+      // every part it asks for has to be there (questions.js, missingParts).
+      else if (partsOf(f).length) out.push(f.id);
     });
     return out;
+  }
+  function hasFile(id) { return !!FILES[id] || !!savedFiles[id]; }
+  function partsOf(f) { return G.missingParts ? G.missingParts(f, V, hasFile) : []; }
+  // The message for a required question that is not complete: name what is
+  // missing when it was started, so "required" never hides "almost".
+  function missingMessage(f) {
+    var parts = partsOf(f);
+    return parts.length && V[f.id] ? "Still needed: " + parts.join("; ") + "." : "This question is required.";
   }
 
   // Extra rules a person can fix: returns { id: message }.
@@ -694,6 +720,15 @@
     });
 
     syncSaveEmail();
+    // Live note under a multi-part question once the person has left it
+    // half-answered: "Still needed: phone; title." It clears itself as soon
+    // as the last part is filled.
+    F.forEach(function (f) {
+      var note = partNotes[f.id]; if (!note) return;
+      var parts = visible(f) && touched[f.id] && V[f.id] ? partsOf(f) : [];
+      note.hidden = !parts.length;
+      note.textContent = parts.length ? "Still needed: " + parts.join("; ") + "." : "";
+    });
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
@@ -1136,7 +1171,7 @@
   sub.addEventListener("click", function () {
     clearErrors(); setStatus("", "");
     var miss = missingIds(), probs = problems();
-    miss.forEach(function (id) { mark(id, "This question is required."); });
+    miss.forEach(function (id) { mark(id, missingMessage(F.filter(function (x) { return x.id === id; })[0])); });
     Object.keys(probs).forEach(function (id) { if (miss.indexOf(id) === -1) mark(id, probs[id]); });
     var bad = F.filter(function (f) { return miss.indexOf(f.id) !== -1 || probs[f.id]; });
     if (bad.length) {

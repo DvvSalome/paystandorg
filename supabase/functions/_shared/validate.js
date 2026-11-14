@@ -2,6 +2,8 @@
 // Pure JS (no Deno or Node APIs) so it runs in the Edge Function and in node tests.
 // Never trust the browser: every rule the form enforces is re-checked here.
 
+import { isEmail } from "./drafts.js";
+
 export const FILE_QUESTIONS = ["C1", "C2", "I2", "J3"];
 export const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png"];
@@ -47,6 +49,10 @@ export function validate(G, answers, files) {
   const v = answers;
   const st = deriveState(v);
   const visible = (f) => { if (!f.showIf) return true; try { return !!f.showIf(v, st); } catch { return true; } };
+  // Files declared in this submission, for questions whose completeness
+  // depends on one (I2: a policy file OR a commitment, plus a named person).
+  const declared = new Set((files || []).map((x) => x && x.question));
+  const hasFile = (id) => declared.has(id);
 
   for (const f of G.FIELDS) {
     if (!visible(f)) continue;
@@ -57,19 +63,24 @@ export function validate(G, answers, files) {
       else if (typeof f.req === "number") ok = Array.isArray(val) && val.length >= f.req;
       else ok = typeof val === "string" ? val.trim() !== "" : !!val;
       if (!ok) { errors[f.id] = "required"; continue; }
+      // A non-empty combined value is not a complete answer for a question
+      // with parts. Same rule as the form: questions.js, missingParts.
+      const parts = G.missingParts ? G.missingParts(f, v, hasFile) : [];
+      if (parts.length) { errors[f.id] = "incomplete: " + parts.join("; "); continue; }
     }
     if (val == null || val === "") continue;
     if (f.options && (f.type === "radio") && !f.options.includes(val)) errors[f.id] = "invalid option";
     if (f.options && f.type === "checks" && Array.isArray(val) && !val.every((x) => f.options.includes(x))) errors[f.id] = "invalid option";
     if (f.type === "country" && !G.COUNTRIES.includes(val)) errors[f.id] = "unknown country";
     if (f.type === "number" && (num(val) == null || num(val) < (f.min != null ? f.min : 0))) errors[f.id] = "invalid number";
-    if (f.type === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) errors[f.id] = "invalid email";
+    if (f.type === "email" && !isEmail(val)) errors[f.id] = "invalid email";
     if (f.maxWords) {
       const text = v[f.id + "__summary"] != null ? v[f.id + "__summary"] : val;
       if (words(text) > f.maxWords) errors[f.id] = "too long";
     }
   }
-  if (v.D1__email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D1__email && !isEmail(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D3__email && !isEmail(v.D3__email)) errors.D3 = "invalid email";
   const dp = v.E2__months; if (v.E2 && !(dp > 0)) errors.E2 = "end date must be after start";
 
   const g1 = num(v.G1), g2 = num(v.G2);

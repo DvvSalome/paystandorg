@@ -110,6 +110,8 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .card-err { font-size: .9rem; color: #7a2412; }
 /* inline format error under an email input */
 .fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
+/* "Still needed: …" under a question answered only in part */
+.partnote { margin: 8px 0 0; font-size: .9rem; color: #7a2412; }
 input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }

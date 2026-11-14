@@ -28,6 +28,9 @@ jobs:
       - name: Email — one rule in the form and the server
         run: node tests/email.test.mjs
 
+      - name: Multi-part questions — every part, in the form and the server
+        run: node tests/completeness.test.mjs
+
   python:
     runs-on: ubuntu-latest
     steps:

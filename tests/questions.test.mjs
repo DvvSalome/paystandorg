@@ -51,22 +51,23 @@ const sig = (s) =>
 
 const sigSrc = sig(load(SRC));
 const sigBundle = sig(load(BUNDLE));
-assert.ok(sigSrc.length >= 60, `expected 60+ field signatures, got ${sigSrc.length}`);
+assert.ok(sigSrc.length >= 59, `expected 59+ field signatures, got ${sigSrc.length}`);
 assert.deepEqual(
   sigBundle, sigSrc,
   `${BUNDLE} is stale. Run python3 scripts/build-function-single.py after ` +
   `syncing — the dashboard deploys from this file.`
 );
 
-// ── 2. the question count is 60 ───────────────────────────────────────────
+// ── 2. the question count is 59 ───────────────────────────────────────────
 
 const G = fields(load(SRC));
 assert.equal(
-  G.FIELDS.length, 60,
-  "60 questions. QUESTION_MAP has 61 because it includes Timestamp, and the " +
-  "form specification lists 61 because it includes G6, a computed value. " +
-  "Neither is a question. If this number changed on purpose, update the " +
-  "header comment, the spec and QUESTION_MAP together."
+  G.FIELDS.length, 59,
+  "59 questions since A4 was removed on 2026-11-13. QUESTION_MAP has 60 " +
+  "because it includes Timestamp, and the form specification lists 60 items " +
+  "because it includes G6, a computed value. Neither is a question. If this " +
+  "number changes on purpose, tests/question_map.test.mjs says what else " +
+  "has to change with it."
 );
 
 const byId = Object.fromEntries(G.FIELDS.map((f) => [f.id, f]));
@@ -158,7 +159,7 @@ assert.equal(
   mustBeConditional.length,
   `exactly ${mustBeConditional.length} fields should be conditional; if that ` +
   `changed on purpose, update this list and the counts in the header comment ` +
-  `(an individual sees 49, a new organisation 53, a 2026 renewal 58)`
+  `(an individual sees 48, a new organisation 52, a 2026 renewal 57)`
 );
 
 console.log("questions: all checks passed");

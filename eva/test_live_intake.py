@@ -330,7 +330,7 @@ def b2_live(check_only=False):
 
     print("\n   Lo que B2 verifica cuando corre completo:")
     for i, line in enumerate([
-        "las 61 columnas vuelven de Supabase con el MISMO nombre y orden "
+        "las 60 columnas vuelven de Supabase con el MISMO nombre y orden "
         "que escribió el formulario",
         "el en dash de \"1–3 years\" sobrevive el viaje (es el carácter "
         "exacto que rompió A2 en v2)",

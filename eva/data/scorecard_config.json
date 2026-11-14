@@ -213,27 +213,6 @@
       "Recovery"
     ]
   },
-  "measurement_tiering": {
-    "_decided_by": "Iván, 2026-11-10 — provisional, reversible en este archivo",
-    "_rationale": "Mediana $5,000; 53% en $5,000 o menos. Los montos se agrupan: $5,000 es el 39% de los grants y $10,000 otro 18%, así que cualquier umbral entre $5,001 y $7,999 recoge el mismo conjunto que $5,000 más dos. $10,000 cubre 79%.",
-    "enabled": true,
-    "threshold_usd": 10000,
-    "threshold_field": "A4",
-    "simplified_requires": [
-      "E7",
-      "F1",
-      "F4"
-    ],
-    "full_requires": [
-      "E7",
-      "F1",
-      "F2",
-      "F3",
-      "F4",
-      "E10"
-    ],
-    "_note": "Abajo del umbral: resultado principal, medida y método de verificación. El seguimiento a 6 y 12 meses se hace por conversación estructurada, no por encuesta."
-  },
   "renewal_short_route": {
     "_decided_by": "Iván, 2026-11-10",
     "_rationale": "J1 y F5 se traslapan para un grantee 2026, y de J1 tenemos el registro. Verificado que no cuesta puntos: 'experience' es un solo juicio de 8 pts sobre la mejor fuente disponible.",
@@ -251,5 +230,8 @@
     "flag_suspected_identifiers": true,
     "attestation_route_for_high_risk": true,
     "_note": "Los grantees reportan cifras agregadas. Si una respuesta parece traer identificadores de participantes, se marca para revisión y no se almacena como evidencia."
+  },
+  "_retired": {
+    "measurement_tiering": "Retired 2026-11-13, Iván. The $10,000 tier made F2, F3 and E10 optional for small requests, but the form always asked them, so it only changed what Eva expected. With A4 removed there is also no amount known before sections E and F. F2, F3 and E10 are required of everyone (MEASUREMENT_REQUIRED in intake_pipeline.py)."
   }
 }

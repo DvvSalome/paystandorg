@@ -106,7 +106,7 @@ así y no de otra forma:
 | | Cómo funciona | Resultado |
 |---|---|---|
 | **Atado (este)** | Los dos campos leen y escriben `V.D1__email`. | Un dato, dos vistas. No hace falta reconciliar nada. |
-| Pre-llenado (no) | D1 copia el de arriba y después queda independiente — el patrón actual de G2. | Divergen, y harían falta banderas de incoherencia como las de A4/G2. |
+| Pre-llenado (no) | D1 copia el de arriba y después queda independiente — el patrón que tenía G2 con A4, retirado el 13 de noviembre al quitar A4. | Divergen, y harían falta banderas de incoherencia como las de A4/G2. |
 
 Nombre, cargo y teléfono se quedan en D1, en la sección D, donde tienen
 contexto. Solo el correo se adelanta, porque es lo único que el guardado

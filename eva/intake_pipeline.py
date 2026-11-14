@@ -135,10 +135,9 @@ QUESTION_MAP = {
     "A1b": "A1b_Org_Type",              # Nonprofit/NGO | Social enterprise
     "A2": "A2_Time_Operating",
     "A3": "A3_Prior_Grant",             # No | Yes, in 2026 | Yes, before 2026
-    "A4": "A4_Requested_Amount",        # NUEVA — monto solicitado, NUMERIC.
-                                        # En el borrador del 5-nov, A4 era
-                                        # "qué años y cuánto recibiste". Ese
-                                        # dato ahora sale del registry.
+    # A4 (requested amount) removed 2026-11-13, Iván: it asked the same
+    # number as G2, out of the budget's context, and existed only to decide
+    # a measurement tier that the form never applied. G2 is the one amount.
     # ── B. Organization ──
     "B1": "B1_Legal_Name",
     "B2": "B2_Country",
@@ -236,51 +235,6 @@ REQUIRED_FIELDS = [
     "K1", "K3", "K4", "K5",
 ]
 
-def _requested_amount(fields, cleaned=None):
-    """
-    The requested amount as a number, or None.
-
-    Prefers the cleaned A4, then raw A4, then G2. The G2 fallback matters:
-    A4 and G2 ask the same thing in two places, and when A4 is blank or
-    unparseable G2 is the better guess at the applicant's intent than
-    defaulting them onto the heavy measurement route. The disagreement case
-    is caught separately by the amount-coherence flag.
-    """
-    if cleaned:
-        v = cleaned.get("A4_Requested_Num")
-        if isinstance(v, (int, float)):
-            return float(v)
-    v, ok = parse_number(fields.get("A4", ""))
-    if ok:
-        return v
-    if cleaned:
-        v = cleaned.get("G2_Requested_Num")
-        if isinstance(v, (int, float)):
-            return float(v)
-    v, ok = parse_number(fields.get("G2", ""))
-    return v if ok else None
-
-
-def is_simplified_tier(fields, cfg, cleaned=None):
-    """
-    True when this application falls below the measurement-tiering threshold.
-
-    Decision 2, Iván 2026-11-10 (provisional). A4 is asked among the filter
-    questions precisely so this is knowable before sections E and F.
-
-    An unknown amount returns False — the full route. That is the safe
-    default (it asks for more, never less), but it is also a penalty the
-    applicant did not earn, so step_flag raises AMOUNT_UNREADABLE so a
-    reviewer fixes the number instead of the applicant silently carrying
-    the heavier burden.
-    """
-    t = (cfg or {}).get("measurement_tiering", {})
-    if not t.get("enabled"):
-        return False
-    amt = _requested_amount(fields, cleaned)
-    return amt is not None and amt < t.get("threshold_usd", 10000)
-
-
 def is_renewal_skipping(field_id, fields, cfg):
     """
     True when a renewal may leave this field blank under the short route.
@@ -312,10 +266,13 @@ CONDITIONAL_REQUIRED = {
     "J2":  lambda f, p: "2026" in f.get("A3", "") and "yes" in f.get("A3", "").lower(),
 }
 
-# Required only in the full measurement tier. Below the threshold these are
-# optional, and the 6/12-month follow-up is a structured conversation rather
-# than a survey — see measurement_tiering in scorecard_config.json.
-TIERED_REQUIRED = ["F2", "F3", "E10"]
+# Measurement fields, required of every applicant. Until 2026-11-13 they
+# were required only above a $10,000 request (decision 2, "measurement
+# tiering"); Iván retired that: the form never applied it — it always asked
+# all three — so the tier only changed what Eva expected, not what people
+# were asked. Kept as a named list because the baseline, the 12-month target
+# and the milestones are what the follow-up instrument measures against.
+MEASUREMENT_REQUIRED = ["F2", "F3", "E10"]
 
 # Paragraph fields with word-count limits: (field, max_words) — v3 IDs.
 # E7 is deliberately absent: it is SHORT TEXT (a one-sentence formula), not a
@@ -332,13 +289,8 @@ PARAGRAPH_FIELDS = [
     ("J1", 200),   # 2026 promises vs achievements
 ]
 
-# Numeric fields — v3. B9 is gone; E2 moved to DATE_FIELDS.
-#
-# A4 belongs here even though it duplicates G2. It decides the measurement
-# tier, so an unparseable A4 silently pushes a small applicant onto the heavy
-# route. Cleaning it means parse_number runs once, the result is reusable, and
-# a bad value gets flagged instead of swallowed.
-NUMERIC_FIELDS = ["A4", "B5", "E5", "G1", "G2"]
+# Numeric fields — v3. B9 and A4 are gone; E2 moved to DATE_FIELDS.
+NUMERIC_FIELDS = ["B5", "E5", "G1", "G2"]
 
 # E2 is a start/end date PAIR. Project duration is DERIVED from it, which is
 # what the "more than one stage in <=12 months" check needs. The v2 code had
@@ -2525,41 +2477,6 @@ def step_clean(applications, country_map, run_id):
         else:
             cleaned["G2_Within_G1"] = "CANNOT_VERIFY"
 
-        # ── A4 vs G2 coherence.
-        #    The form asks the requested amount twice: A4 among the filter
-        #    questions (because the measurement tier has to be known before
-        #    sections E and F are rendered) and G2 inside the budget. People
-        #    revise the budget as they fill the form and rarely go back to
-        #    fix A4, so disagreement is expected and must be visible.
-        #
-        #    Two distinct failures. Any gap is a data-quality problem — a
-        #    reviewer has to say which number is the real request. A gap that
-        #    straddles the tiering threshold is worse: it means the applicant
-        #    was asked a different set of questions than their actual grant
-        #    size calls for, and that cannot be repaired after submission. ──
-        a4_num = cleaned.get("A4_Requested_Num")
-        if not isinstance(a4_num, (int, float)):
-            a4_num = parse_number(f.get("A4", ""))[0]
-        cleaned["A4_G2_Match"] = ""
-        if isinstance(a4_num, (int, float)) and isinstance(g2_num, (int, float)):
-            gap = round(abs(a4_num - g2_num), 2)
-            cleaned["A4_G2_Match"] = "YES" if gap < 1 else "NO"
-            cleaned["A4_G2_Diff"] = gap if gap >= 1 else ""
-            if gap >= 1:
-                flags.append(f"amount_mismatch:A4={a4_num}_vs_G2={g2_num}")
-                thr = (app.get("_config") or {}).get(
-                    "measurement_tiering", {}).get("threshold_usd", 10000)
-                if (a4_num < thr) != (g2_num < thr):
-                    flags.append(
-                        f"amount_mismatch_crosses_tier:threshold={thr}")
-        else:
-            cleaned["A4_G2_Match"] = "CANNOT_VERIFY"
-            cleaned["A4_G2_Diff"] = ""
-            # A blank or unreadable A4 pushes the applicant onto the full
-            # measurement route. Safe, but unearned — surface it.
-            if not isinstance(a4_num, (int, float)):
-                flags.append("amount_unreadable:A4")
-
         # Cost per participant (G6, internal only) = G2 / E5
         e5_num = cleaned.get("E5_Participants_Num")
         if isinstance(g2_num, (int, float)) and isinstance(e5_num, (int, float)) and e5_num > 0:
@@ -3025,18 +2942,12 @@ def step_flag(applications, run_id, drive_api=None):
             except Exception:
                 pass
 
-        # Measurement fields are required only in the full tier (decision 2),
-        # and a renewal may skip F5 under the short route (decision 4). Both
-        # are config-driven so they can be reversed without touching code.
+        # Measurement fields are required of everyone; a renewal may skip F5
+        # under the short route (decision 4, config-driven).
         cfg_run = app.get("_config") or {}
-        simplified = is_simplified_tier(f, cfg_run, app.get("cleaned"))
-        for tf in TIERED_REQUIRED:
-            if simplified:
-                continue
+        for tf in MEASUREMENT_REQUIRED:
             if not f.get(tf, "").strip():
-                empty_required.append(f"{tf}(full-tier)")
-        if simplified:
-            flags_detail.append("measurement_tier:simplified")
+                empty_required.append(tf)
         for sf in ("F5",):
             if is_renewal_skipping(sf, f, cfg_run) and not f.get(sf, "").strip():
                 flags_detail.append(f"renewal_short_route:{sf}_skipped")

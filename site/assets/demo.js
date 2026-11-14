@@ -40,7 +40,6 @@
   // A
   pickStarts("A1", "Organization"); pickStarts("A1b", "Nonprofit");
   pick("A2", "1–3 years"); pick("A3", "No");
-  setVal(box("A4").querySelector("input"), "20000");
   // B
   setVal(box("B1").querySelector("input"), "Fundación Semillas Digitales (DEMO)");
   country("B2", "Colombia");
@@ -88,6 +87,8 @@
   setVal(box("F5").querySelector("textarea"), "En 2025 capacitamos a 60 personas en dos talleres de educación financiera; 35 hicieron al menos una transacción propia. Informe: https://example.org/informe-2025");
   // G
   setVal(box("G1").querySelector("input"), "32000");
+  // G2 used to be pre-filled from A4; A4 is gone, so it is set here. G4 below adds up to it.
+  setVal(box("G2").querySelector("input"), "20000");
   (function () {
     var cats = box("G4").querySelectorAll(".bline input");
     ["9000", "6000", "2500", "1500", "1000"].forEach(function (v, i) { setVal(cats[i], v); });

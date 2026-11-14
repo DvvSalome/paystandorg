@@ -6,28 +6,25 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 globalThis.window = globalThis.window || {};
 
 // ---- questions (from site/assets/questions.js) ----
-/* Grant Application 2027 — question definitions (v3, 60 questions).
+/* Grant Application 2027 — question definitions (v3, 59 questions).
    Source: Ivan's Apps Script preview, 10 Nov 2026. Edit here to change questions;
    the form engine in form.js does not hard-code any question.
 
-   It is 60, not 61. Two other documents say 61 and each counts something
-   that is not a question, which is why the number looked confirmed:
+   59 since 2026-11-13, when A4 (amount requested, asked in section A) was
+   removed: it asked the same number as G2, and existed only for a
+   measurement tier the form never applied. G2 is the one amount.
 
-     - The form specification lists 61 numbered items because it includes
-       G6 (cost per participant), which its own row marks "Computed: G2 ÷ E5
-       — Internal, not shown to the applicant". G6 is derived in the
-       pipeline's step_clean; nobody is ever asked it.
-     - QUESTION_MAP in intake_pipeline.py has 61 entries because it includes
-       Timestamp, the submission-time column.
+   Two other lists say 60, each counting something that is not a question:
+     - the form specification lists 60 numbered items because it includes
+       G6 (cost per participant), computed from G2 / E5 and never asked;
+     - QUESTION_MAP in eva/intake_pipeline.py has 60 entries because it
+       includes Timestamp.
+   tests/question_map.test.mjs keeps this file, supabase/eva_question_map.json
+   and QUESTION_MAP naming the same questions.
 
-   So: 60 questions here, 60 + Timestamp = 61 columns for Eva, and 60 + G6
-   = 61 rows in the spec. Verified by diffing all three sets in both
-   directions on 2026-11-13: zero discrepancies against QUESTION_MAP, and
-   G6 the only item the spec has that this file does not.
-
-   Nobody ever sees all 60: 13 are conditional. An individual applying for
-   the first time sees 49; an organisation applying for the first time, 53;
-   a 2026 renewal, 58. */
+   Nobody sees all 59: 13 are conditional. An individual applying for the
+   first time sees 48; an organisation applying for the first time, 52; a
+   2026 renewal, 57. */
 (function () {
   "use strict";
   var COUNTRIES = ["Afghanistan","Albania","Algeria","Angola","Argentina","Armenia","Australia","Austria","Bangladesh","Belgium","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","Colombia","Comoros","Congo (DRC)","Congo (Republic)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Czechia","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Eritrea","Estonia","Eswatini","Ethiopia","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kenya","Kosovo","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Lithuania","Madagascar","Malawi","Malaysia","Mali","Mauritania","Mexico","Moldova","Mongolia","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Macedonia","Norway","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Romania","Rwanda","Senegal","Serbia","Sierra Leone","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Trinidad and Tobago","Tunisia","Turkey","Uganda","Ukraine","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
@@ -35,7 +32,7 @@ globalThis.window = globalThis.window || {};
     { id: "0", title: "Before you apply",
       note: "Two short checklists. The first tells you which documents to gather; the second confirms you are eligible. Takes about two minutes." },
     { id: "A", title: "Tell us about you",
-      note: "Five questions about who is applying and how much you are requesting. Your answers here determine which of the later questions apply to you, so some sections will be shorter than others." },
+      note: "A few short questions about who is applying. Your answers here determine which of the later questions apply to you, so some sections will be shorter than others." },
     { id: "B", title: "Organization",
       note: "Your legal details, exactly as they appear on your registration document or identification. These carry through to the grant agreement if you are selected, so accuracy here saves time later." },
     { id: "C", title: "Documents",
@@ -109,9 +106,6 @@ globalThis.window = globalThis.window || {};
     { id: "A3", s: "A", type: "radio", req: true,
       label: "Have you received a grant from Paystand.org before?",
       options: ["No", "Yes, in 2026", "Yes, before 2026"] },
-    { id: "A4", s: "A", type: "number", req: true, min: 1, prefix: "USD",
-      label: "How much are you requesting from Paystand.org?",
-      help: "An approximate figure is fine \u2014 you can refine it in the budget section." },
 
     
     { id: "B1", s: "B", type: "text", req: true,
@@ -259,7 +253,7 @@ globalThis.window = globalThis.window || {};
       label: "Total project budget" },
     { id: "G2", s: "G", type: "number", req: true, prefix: "USD", min: 1,
       label: "Amount requested from Paystand.org",
-      help: "Pre-filled from A4. Adjust it if your budget work changed the figure — this is the authoritative number." },
+      help: "The amount you are asking Paystand.org for. It cannot be larger than the total project budget (G1)." },
     { id: "G3", s: "G", type: "funders", req: true,
       label: "Are you applying to other funders for this same project?" },
     { id: "G4", s: "G", type: "budget", req: true,

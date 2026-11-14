@@ -315,7 +315,6 @@
         ni.type = "number"; ni.min = f.min != null ? f.min : 0; ni.step = "1";
         ni.inputMode = "decimal"; ni.id = "i-" + f.id;
         ni.addEventListener("input", function () {
-          if (f.id === "G2") V.__g2touched = true;
           V[f.id] = ni.value; refresh();
         });
         wn.appendChild(ni); body.appendChild(wn);
@@ -688,9 +687,6 @@
     else if (a1.indexOf("Individual") === 0 || a2 === "Less than 1 year") ST.profile = "Initial";
     else ST.profile = "Established";
 
-    // G2 starts from A4 until the applicant edits it.
-    var g2in = document.getElementById("i-G2");
-    if (g2in && V.A4 && !V.__g2touched) { g2in.value = V.A4; V.G2 = V.A4; }
 
     F.forEach(function (f) {
       var node = document.getElementById("f-" + f.id);
@@ -1245,7 +1241,7 @@
     var files = {};
     Object.keys(FILES).forEach(function (id) { files[id] = FILES[id].name; });
     Object.keys(savedFiles).forEach(function (id) { if (!files[id] && !FILES[id]) files[id] = savedFiles[id]; });
-    return { v: 1, fields: fields, files: files, g2touched: !!V.__g2touched, email: V.D1__email || "" };
+    return { v: 1, fields: fields, files: files, email: V.D1__email || "" };
   }
 
   function fire(n, t) { n.dispatchEvent(new Event(t, { bubbles: true })); }
@@ -1264,7 +1260,6 @@
           else { c.value = x; fire(c, "input"); fire(c, "change"); }
         });
       });
-      V.__g2touched = !!state.g2touched;
     } finally { restoring = false; }
     savedFiles = state.files || {};
     Object.keys(savedFiles).forEach(function (id) {

@@ -152,9 +152,9 @@ def main():
 
     # QUESTION_MAP en su tamaño correcto, leído del módulo ya ejecutado.
     qm = getattr(mod, "QUESTION_MAP", {})
-    ok_qm = len(qm) == 61
+    ok_qm = len(qm) == 60
     print(f"  {'✓' if ok_qm else '✗'} QUESTION_MAP: {len(qm)} columnas "
-          f"(deben ser 61)")
+          f"(deben ser 60)")
 
     print("\n" + "=" * 68)
     failed = bool(bad) or not ok_qm

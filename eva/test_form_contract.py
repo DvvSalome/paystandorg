@@ -15,7 +15,7 @@ formulario renderice. Para eso está el pool B (test_live_intake.py).
 Por qué existe aparte de test_score_v3
 ──────────────────────────────────────
 test_score_v3 prueba el scorecard con los campos ya limpios. Esta prueba
-entra una fila CRUDA — 61 columnas en orden, como la escribe el formulario —
+entra una fila CRUDA — 60 columnas en orden, como la escribe el formulario —
 y recorre INGEST → CLEAN → CLASSIFY → FLAG → SCORE. Ahí viven los errores que
 el scorecard nunca puede ver:
 
@@ -61,8 +61,8 @@ WANT_FN = {
     "parse_number", "count_words", "normalize_text", "normalize_timestamp",
     "normalize_a2", "has_repeated_text", "has_consecutive_consonants",
     "norm_org_name", "check_ofac", "check_name_in_doc", "check_address_in_doc",
-    "infer_stage", "infer_pillar", "step_score", "_requested_amount",
-    "is_simplified_tier", "is_renewal_skipping", "resolve_app_id",
+    "infer_stage", "infer_pillar", "step_score",
+    "is_renewal_skipping", "resolve_app_id",
     "generate_app_id", "_count_signals", "_has_any", "_median",
     "has_time_markers_text",
 }
@@ -70,7 +70,7 @@ WANT_CONST = {
     "QUESTION_MAP", "NUMERIC_FIELDS", "DATE_FIELDS", "PARAGRAPH_FIELDS",
     "REMOVED_FIELDS_V2", "REQUIRED_FIELDS", "URL_REGEX", "EMAIL_REGEX",
     "VALID_PILLARS", "VALID_MEASURES", "VALID_STAGES", "STAGE_SIGNALS",
-    "PILLAR_SIGNALS", "RESULT_FORMULA_FIELD",
+    "PILLAR_SIGNALS", "RESULT_FORMULA_FIELD", "MEASUREMENT_REQUIRED",
     "APP_ID_PATTERN", "GENERIC_BENEFICIARY_TERMS", "INBOUND_APP_ID_COLUMNS",
     "MIN_PARAGRAPH_WORDS", "RUNS_DIR", "_AFFECTED_GROUP_TERMS",
     "_CONTINUITY_RESOURCE", "_CONTINUITY_WHO", "_FINANCIAL_TERMS",
@@ -207,7 +207,7 @@ BASE = {
     # real, y la validación de renovación jamás se disparaba — está
     # documentado en eva-intake-process-2027.md línea 170. El caso
     # A3_INVALID_VALUE de abajo fija el contrato para que no vuelva.
-    "A1": "Yes", "A2": "1–3 years", "A3": "No", "A4": "8500",
+    "A1": "Yes", "A2": "1–3 years", "A3": "No",
     "B1": "Asociación Semilla Digital", "B2": "Guatemala",
     "B3": "María Elena Choc", "B4": "4a Calle 7-32, Zona 1, Quetzaltenango",
     "B5": "42000", "B6": "https://semilladigital.example.org",
@@ -266,16 +266,13 @@ def variant(**over):
 
 CASES = {
 
-    # ── El caso de referencia. Monto 8500 < 10000, así que cae en el tier
-    #    ligero: F2/F3/E10 no son obligatorios. Es una solicitud real y
-    #    completa de una organización chica.
-    "TIER_LIGHT": {
+    # ── El caso de referencia: una solicitud real y completa de una
+    #    organización chica que pide 8,500 (G2, el único monto desde que se
+    #    quitó A4 el 13 de noviembre).
+    "REFERENCE": {
         "fields": BASE,
         "expect": {
-            "A4_Requested_Num": 8500.0,
             "G2_Requested_Num": 8500.0,
-            "A4_G2_Match": "YES",
-            "simplified_tier": True,
             "G4_Budget_Sum_Valid": "YES",   # 4200+2100+1300+900 = 8500
             "G2_Within_G1": "YES",          # 8500 <= 11200
             "G6_Cost_Per_Participant": 70.83,   # 8500 / 120
@@ -285,70 +282,22 @@ CASES = {
             # Un solo pilar: el texto es de comercio de mercado de punta a
             # punta, sin un segundo eje que alcance el piso.
             "pillars_all": ["Economic Empowerment"],
-            "flags_absent": ["amount_mismatch", "amount_unreadable:A4",
-                             "budget_sum_mismatch", "request_exceeds_total"],
+            "flags_absent": ["budget_sum_mismatch", "request_exceeds_total",
+                             "amount_mismatch", "amount_unreadable"],
         },
     },
 
-    # ── El mismo expediente pero pidiendo 25000. Cruza el umbral, así que
-    #    el tier pesado aplica y F2/F3/E10 pasan a ser obligatorios.
-    #    G4 ya no suma (sigue sumando 8500 contra un pedido de 25000) y
-    #    el pedido excede el total del proyecto.
-    "TIER_HEAVY": {
-        "fields": variant(A4="25000", G2="25000"),
+    # ── El mismo expediente pidiendo 25,000: G4 ya no suma (sigue en 8,500
+    #    contra un pedido de 25,000) y el pedido excede el total del proyecto.
+    "OVER_BUDGET": {
+        "fields": variant(G2="25000"),
         "expect": {
-            "A4_Requested_Num": 25000.0,
-            "A4_G2_Match": "YES",
-            "simplified_tier": False,
+            "G2_Requested_Num": 25000.0,
             "G4_Budget_Sum_Valid": "NO",
             "G4_Budget_Sum_Diff": -16500.0,   # 8500 - 25000
             "G2_Within_G1": "NO",             # 25000 > 11200
             "flags_present": ["budget_sum_mismatch",
                               "request_exceeds_total"],
-        },
-    },
-
-    # ── EL CASO QUE MOTIVÓ EL ARREGLO DE HOY.
-    #    A4 dice 5000 (tier ligero) y G2 dice 48000 (tier pesado). El
-    #    solicitante contestó el filtro con una cifra y después subió el
-    #    presupuesto sin volver atrás. Antes de hoy esto pasaba sin ruido:
-    #    se le pedían menos campos de medición de los que su monto real
-    #    exige, y nadie se enteraba.
-    "AMOUNT_CROSSES_TIER": {
-        "fields": variant(A4="5000", G2="48000", G1="52000",
-                          G4="Capacitación 24000, Equipos 14000, "
-                             "Conectividad 6000, Coordinación 4000"),
-        "expect": {
-            "A4_Requested_Num": 5000.0,
-            "G2_Requested_Num": 48000.0,
-            "A4_G2_Match": "NO",
-            "A4_G2_Diff": 43000.0,
-            "simplified_tier": True,   # A4 gana: es lo que vio el formulario
-            "flags_present": ["amount_mismatch",
-                              "amount_mismatch_crosses_tier"],
-        },
-    },
-
-    # ── A4 en blanco. El tier cae a G2 en vez de empujar a la ruta pesada
-    #    por defecto, y se levanta la bandera para que un revisor arregle
-    #    el número. Antes de hoy, A4 vacío = ruta pesada, en silencio.
-    "AMOUNT_BLANK_A4": {
-        "fields": variant(A4=""),
-        "expect": {
-            "A4_G2_Match": "CANNOT_VERIFY",
-            "simplified_tier": True,   # por G2 = 8500
-            "flags_present": ["amount_unreadable:A4"],
-        },
-    },
-
-    # ── A4 escrito en palabras. parse_number no lo entiende y debe
-    #    comportarse igual que el blanco, no reventar.
-    "AMOUNT_IN_WORDS": {
-        "fields": variant(A4="ocho mil quinientos dólares"),
-        "expect": {
-            "A4_G2_Match": "CANNOT_VERIFY",
-            "simplified_tier": True,
-            "flags_present": ["amount_unreadable:A4"],
         },
     },
 
@@ -458,12 +407,10 @@ def clean_min(fields, cfg):
         c[f"{fid}_{col.split('_', 1)[1] if '_' in col else col}"] = v if ok else None
 
     # Los nombres reales que usa el pipeline, no derivados
-    a4 = P["parse_number"](fields.get("A4", ""))
     g1 = P["parse_number"](fields.get("G1", ""))
     g2 = P["parse_number"](fields.get("G2", ""))
     b5 = P["parse_number"](fields.get("B5", ""))
     e5 = P["parse_number"](fields.get("E5", ""))
-    c["A4_Requested_Num"] = a4[0] if a4[1] else None
     c["G1_Total_Num"] = g1[0] if g1[1] else None
     c["G2_Requested_Num"] = g2[0] if g2[1] else None
     c["B5_Annual_Budget_Num"] = b5[0] if b5[1] else None
@@ -494,22 +441,7 @@ def clean_min(fields, cfg):
     else:
         c["G2_Within_G1"] = "CANNOT_VERIFY"
 
-    # A4 contra G2 — el chequeo nuevo
-    a4n, g2n = c["A4_Requested_Num"], c["G2_Requested_Num"]
-    if isinstance(a4n, (int, float)) and isinstance(g2n, (int, float)):
-        gap = round(abs(a4n - g2n), 2)
-        c["A4_G2_Match"] = "YES" if gap < 1 else "NO"
-        c["A4_G2_Diff"] = gap if gap >= 1 else ""
-        if gap >= 1:
-            flags.append(f"amount_mismatch:A4={a4n}_vs_G2={g2n}")
-            thr = cfg.get("measurement_tiering", {}).get("threshold_usd", 10000)
-            if (a4n < thr) != (g2n < thr):
-                flags.append(f"amount_mismatch_crosses_tier:threshold={thr}")
-    else:
-        c["A4_G2_Match"] = "CANNOT_VERIFY"
-        c["A4_G2_Diff"] = ""
-        if not isinstance(a4n, (int, float)):
-            flags.append("amount_unreadable:A4")
+    g2n = c["G2_Requested_Num"]
 
     # Costo por participante y ratio de dependencia
     if isinstance(g2n, (int, float)) and isinstance(c["E5_Participants_Num"], (int, float)) \
@@ -538,17 +470,13 @@ def run_case(name, case):
     cleaned, flags = clean_min(fields, CFG)
 
     # Valores limpios exactos
-    for key in ("A4_Requested_Num", "G2_Requested_Num", "A4_G2_Match",
-                "A4_G2_Diff", "G4_Budget_Sum_Valid", "G4_Budget_Sum_Diff",
+    for key in ("G2_Requested_Num", "G4_Budget_Sum_Valid", "G4_Budget_Sum_Diff",
                 "G2_Within_G1", "G6_Cost_Per_Participant",
                 "Dependency_Ratio"):
         if key in exp:
             eq(cleaned.get(key), exp[key], f"{name}: {key}")
 
     # Tier
-    if "simplified_tier" in exp:
-        got = P["is_simplified_tier"](fields, CFG, cleaned)
-        eq(got, exp["simplified_tier"], f"{name}: tier simplificado")
 
     # Banderas que deben estar
     for want in exp.get("flags_present", []):
@@ -660,7 +588,7 @@ def run_case(name, case):
 
 def structural_checks():
     print("\n── ESTRUCTURA " + "─" * 45)
-    eq(len(QUESTION_MAP), 61, "QUESTION_MAP tiene 61 columnas")
+    eq(len(QUESTION_MAP), 60, "QUESTION_MAP tiene 60 columnas (59 preguntas + Timestamp)")
     check(not P["_missing_fn"],
           "todas las funciones esperadas existen en el pipeline",
           got=sorted(P["_missing_fn"]), want="ninguna faltante")
@@ -672,7 +600,7 @@ def structural_checks():
     # con los 17 IDs que cambiaron de sentido — eso es justo lo que no
     # queremos. Esto fija el significado.
     meaning = {
-        "A4": "A4_Requested_Amount", "B3": "B3_Legal_Rep_Name",
+        "B3": "B3_Legal_Rep_Name",
         "B4": "B4_Address", "B5": "B5_Annual_Budget", "B7": "B7_FTE_Staff",
         "B8": "B8_Registration_Number", "E4": "E4_Economic_Barrier",
         "E5": "E5_Participant_Count", "E7": "E7_Primary_Result",
@@ -688,10 +616,17 @@ def structural_checks():
         check(rid not in QUESTION_MAP,
               f"campo removido {rid} sigue fuera de QUESTION_MAP")
 
-    # A4 tiene que estar en NUMERIC_FIELDS — maneja el tier
-    check("A4" in P["NUMERIC_FIELDS"],
-          "A4 recibe limpieza numérica (decide el tier)",
-          got=P["NUMERIC_FIELDS"], want="incluye A4")
+    # A4 se quitó el 2026-11-13: el monto se pregunta una sola vez, en G2.
+    # Que no vuelva por ningún lado, y que no reaparezca el tier que lo
+    # justificaba.
+    check("A4" not in QUESTION_MAP and "A4" not in P["NUMERIC_FIELDS"],
+          "A4 fuera de QUESTION_MAP y de NUMERIC_FIELDS",
+          got=[x for x in ("A4",) if x in QUESTION_MAP or x in P["NUMERIC_FIELDS"]], want=[])
+    eq(sorted(P["MEASUREMENT_REQUIRED"]), ["E10", "F2", "F3"],
+       "F2, F3 y E10 obligatorios para todos (sin tier)")
+    check("measurement_tiering" not in CFG,
+          "scorecard_config sin measurement_tiering",
+          got=list(CFG.keys()), want="sin measurement_tiering")
 
 
 def main():

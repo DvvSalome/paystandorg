@@ -22,7 +22,6 @@ select
   intake_text(a.answers, 'A1b') as "A1b_Org_Type",
   intake_text(a.answers, 'A2') as "A2_Time_Operating",
   intake_text(a.answers, 'A3') as "A3_Prior_Grant",
-  intake_text(a.answers, 'A4') as "A4_Requested_Amount",
   intake_text(a.answers, 'B1') as "B1_Legal_Name",
   intake_text(a.answers, 'B2') as "B2_Country",
   intake_text(a.answers, 'B3') as "B3_Legal_Rep_Name",

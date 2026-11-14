@@ -306,6 +306,55 @@ VALID_PILLARS = ["Education", "Technology Adoption", "Economic Empowerment"]
 VALID_MEASURES = ["Skills", "Access", "Commerce", "Remittances", "Recovery"]
 VALID_STAGES = ["Awareness", "Useful adoption", "Local circulation", "Resilience"]
 
+# The form shows F1 and E12 with a description after the name:
+#   "Commerce — number of merchants trading in the last 30 days"
+# and stores the whole label. Every comparison here is against the bare name,
+# so until 2026-11-13 F1 never matched (4 Resilience-fit points lost on every
+# application, plus an "unrecognized_measure" note) and E12 was ignored (the
+# target stage fell back to the inferred one, and the ambitious-target rule
+# never ran). The test fixtures used the bare names, so nothing failed.
+# Normalized once, at the start of step_clean; test_form_options.py feeds the
+# form's own labels through the real steps.
+OPTION_FIELDS = {"F1": VALID_MEASURES, "E12": VALID_STAGES, "J2": VALID_STAGES}
+
+
+def canonical_option(value, valid):
+    """
+    Map a stored option label onto its canonical name: exact match first, then
+    the text before a spaced dash ("Commerce — ..."), case-insensitively.
+    Anything unrecognized is returned unchanged, so it still shows up as
+    unrecognized downstream instead of being silently coerced.
+    """
+    v = "" if value is None else str(value).strip()
+    if not v or v in valid:
+        return v
+    head = re.split(r"\s+[\u2014\u2013-]\s+", v, maxsplit=1)[0].strip().lower()
+    for c in valid:
+        if head == c.lower():
+            return c
+    return v
+
+
+def normalize_option_fields(fields):
+    for fid, valid in OPTION_FIELDS.items():
+        if fid in fields:
+            fields[fid] = canonical_option(fields[fid], valid)
+    return fields
+
+
+# Eligibility checklist (0.2). Four statements; the form lets an applicant
+# continue with fewer if they explain in K2 (decision 2026-11-13), on the
+# understanding that Eva sends any incomplete checklist to manual review. That
+# gate did not exist until 2026-11-13. Matched by a phrase from each statement
+# rather than by the full text, so a copy edit on the form does not silently
+# disable it; test_form_options.py checks every phrase against the form.
+ELIGIBILITY_STATEMENTS = [
+    ("economic_barriers", "economic barrier"),
+    ("charitable_purpose", "charitable purpose"),
+    ("outcome_reporting", "outcome reporting"),
+    ("no_price_gains", "price gain"),
+]
+
 # Resilience-path signals for STAGE INFERENCE (methodology Paso 3).
 # Searched across E1 + E4 + E8 + E9 + F1 + F2 + F3.
 STAGE_SIGNALS = {
@@ -2405,6 +2454,9 @@ def step_clean(applications, country_map, run_id):
     for app in applications:
       try:
         f = app['fields']
+        # First thing every later step sees. Here rather than at ingest so a
+        # run resumed with --step clean from a saved ingest.json gets it too.
+        normalize_option_fields(f)
         cleaned = {
             "App_ID": app['app_id'],
             "Timestamp": app.get("timestamp", ""),  # Already normalized in step_ingest
@@ -3125,6 +3177,20 @@ def step_flag(applications, run_id, drive_api=None):
             flags["child_protection_missing"] = "YES"
             flags_detail.append(f"I1={i1}_without_safeguarding_policy")
 
+        # Eligibility — hard gate. Any statement of 0.2 left unchecked sends the
+        # application to manual review, where a person reads K2. The server
+        # already requires K2 whenever a box is missing, so "K2 explains it"
+        # cannot be the condition: that would make the gate unreachable.
+        elig = f.get("0.2", "").lower()
+        elig_missing = [key for key, phrase in ELIGIBILITY_STATEMENTS
+                        if phrase not in elig]
+        if elig_missing:
+            flags["eligibility_incomplete"] = "YES"
+            flags_detail.append(
+                f"eligibility_missing:{','.join(elig_missing)}"
+                + ("" if f.get("K2", "").strip() else ";no_K2_explanation")
+            )
+
         # Disclosures — hard gate. K1 other than "None" needs K2 detail.
         k1 = f.get("K1", "").strip()
         k2 = f.get("K2", "").strip()
@@ -3253,8 +3319,19 @@ def step_flag(applications, run_id, drive_api=None):
             "nonsense_text_in_number", "nonsense_copy_paste", "nonsense_short_answer",
             "nonsense_invalid_email", "nonsense_empty_required",
             "name_mismatch", "address_mismatch", "ofac_flag",
-            "missing_nonprofit_proof", "duplicate_application", "renewal_discrepancy"
+            "missing_nonprofit_proof", "duplicate_application", "renewal_discrepancy",
+            # Raised above but missing from this list until 2026-11-13, so they
+            # were never counted: an application whose only flag was a child-
+            # protection or disclosure hard gate came out Has_Flags=NO and
+            # "Sin flags" in the Review Package. Only Flags_Detail had them.
+            "eligibility_incomplete", "child_protection_missing", "disclosure_present",
+            "bitcoin_rule_violation", "budget_invalid", "high_dependency",
+            "suspected_participant_identifiers",
         ]
+        # Any flag raised that is still not listed is counted too, rather than
+        # dropped: a new check must not be invisible because this list was not
+        # updated. test_form_options.py fails if one is raised and not listed.
+        all_flag_keys += [k for k in flags if k not in all_flag_keys]
 
         flag_row = {
             "App_ID": app['app_id'],
@@ -3263,7 +3340,8 @@ def step_flag(applications, run_id, drive_api=None):
 
         flag_count = 0
         critical_count = 0
-        critical_flags = ["ofac_flag", "name_mismatch", "missing_nonprofit_proof", "renewal_discrepancy"]
+        critical_flags = ["ofac_flag", "name_mismatch", "missing_nonprofit_proof", "renewal_discrepancy",
+                          "eligibility_incomplete"]
 
         for fk in all_flag_keys:
             val = flags.get(fk, "")

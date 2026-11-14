@@ -15,29 +15,23 @@ No es una falla: el diseño actual no tiene dónde ponerlos.
    subida firmado por archivo en `applications/<APP-2027-xxxx>/…`, y ese
    número de aplicación no existe hasta el envío. Antes no hay carpeta.
 
-## Antes de construir: una decisión que no es técnica
+## Decisión (Iván, 2026-11-13)
 
-Los adjuntos son **documentos de identidad, registro legal, y W-9 o
-W-8BEN**. El W-9 lleva el número fiscal (SSN o EIN). Guardarlos con el
-borrador significa retener esos datos de **personas que nunca enviaron una
-solicitud** —quien empieza, adjunta y abandona—, durante todo el tiempo que
-viva el borrador.
+**Los adjuntos se guardan con el borrador**, para que la persona pueda
+retomar sin volver a subir nada.
 
-Eso cae en la **regla institucional de protección de datos**, que está
-pendiente con Alexandra y Lesly. Esta especificación no la decide; plantea
-dos caminos y qué exige cada uno.
+- **Uno por pregunta.** Subir otro archivo en la misma pregunta reemplaza
+  al anterior; no se acumulan versiones.
+- **30 días sin actualización = se borra todo**: el borrador y sus
+  archivos. Así solo se conserva lo de quien sigue trabajando su solicitud,
+  y no los documentos de quien abandonó.
 
-| | A. No guardarlos (hoy) | B. Guardarlos con el borrador |
-|---|---|---|
-| Para el solicitante | Vuelve a adjuntar al retomar | Retoma sin volver a adjuntar |
-| Datos retenidos | Solo de quien envía | También de quien abandona |
-| Trabajo | Mejorar el aviso | Endpoint, almacenamiento, limpieza, pruebas |
-| Requiere | Nada | Aprobación de la regla de datos y limpieza programada |
+Los adjuntos incluyen identificaciones y W-9 o W-8BEN, que llevan número
+fiscal. Lo que hace aceptable guardarlos es justamente la regla de los 30
+días, así que el borrado no puede quedar "a mano" (ver abajo). Conviene que
+Alexandra y Lesly lo conozcan al cerrar la regla institucional de datos.
 
-**Recomendación:** B, **solo si** la regla de datos lo aprueba y con
-retención corta. Mientras tanto, A con un aviso mejor (abajo).
-
-## Si se aprueba B: el diseño
+## El diseño
 
 ### Dónde
 
@@ -48,7 +42,9 @@ retención corta. Mientras tanto, A con un aviso mejor (abajo).
   **Nunca el código en la ruta.** El código es un *bearer token*: quien lo
   tiene abre el borrador. Las rutas aparecen en logs y en los permisos
   firmados; con el hash no se puede volver al código.
-- Un archivo por pregunta. Subir otro para la misma pregunta lo reemplaza.
+- **Un archivo por pregunta.** Subir otro para la misma pregunta lo
+  reemplaza: misma ruta, `upsert`. El nombre original se guarda aparte en el
+  borrador para mostrarlo.
 
 ### Endpoint nuevo: `POST /draft/file`
 
@@ -85,8 +81,25 @@ opcional:
   with pg_cron"*, así que en la práctica los borradores viejos no se borran
   nunca. Con archivos eso no puede quedar así. Programarla (pg_cron o una
   función con horario) y que borre fila **y** carpeta.
-- **Retención**: proponer menos de 60 días para los archivos —por ejemplo
-  30— aunque el texto del borrador dure más. Lo decide la regla de datos.
+- **Retención: 30 días sin actualización.** Cuenta desde `updated_at` del
+  borrador, que se renueva con cada guardado y con cada archivo subido. A
+  los 30 días se borran la fila y la carpeta juntas. Hoy la migración habla
+  de 60 días para el texto; pasa a 30 para todo, para que nunca quede un
+  borrador sin sus archivos ni archivos sin su borrador.
+- **Quién borra: Supabase, no Eva.** La idea es que Eva haga el
+  seguimiento de las solicitudes, y puede: pero el borrado conviene
+  programarlo dentro de Supabase (pg_cron o una función con horario), por
+  dos razones. Hoy Eva **solo lee** Supabase —el pipeline no tiene ni una
+  escritura—, y eso significa que un error en Eva no puede dañar las
+  solicitudes; darle permiso de borrar cambia eso. Y Eva no ve la tabla
+  `drafts`: lee la vista `intake_rows`, que solo trae solicitudes enviadas.
+  Lo que sí encaja con Eva es reportar cuántos borradores vencieron en cada
+  ciclo, si eso se quiere.
+- **Aviso antes de borrar (opcional, recomendado).** Un correo a los 23 días
+  —"tu solicitud en progreso se borrará en 7 días"— usando el mismo Resend
+  que ya envía la confirmación. Recupera solicitudes que se iban a perder y
+  hace que el borrado no sorprenda a nadie. Solo aplica si el borrador tiene
+  correo.
 - **Huérfanos**: una pasada que borre carpetas de `drafts/` sin fila
   correspondiente, por si alguna operación quedó a medias.
 
@@ -108,22 +121,12 @@ noviembre, en espera).
 - Al retomar: mostrar el archivo como adjuntado, sin pedirlo otra vez.
 - Al enviar: no volver a subir lo que ya está en el borrador.
 
-## Mientras tanto (camino A): el aviso
-
-Hoy el aviso dice *"Attached files are not saved, so you will attach them
-again"* en el código, y al retomar *"You attached X before. Files are not
-saved: please attach it again."* Propuesta, más útil para quien decide
-cuándo adjuntar:
-
-> Attach your documents when you are ready to submit. Saving keeps your
-> answers, but not files.
-
-Esto lo puedo hacer yo en el formulario sin esperar nada.
-
 ## Pruebas que deberían acompañarlo
 
 - `/draft/file` rechaza un código inexistente, una pregunta fuera de
   `FILE_QUESTIONS`, un tipo o tamaño inválido, y el exceso de subidas.
 - Ninguna ruta de `drafts/` contiene el código en claro.
 - Enviar mueve los archivos y deja vacía la carpeta del borrador.
-- La limpieza programada borra fila y carpeta de un borrador vencido.
+- La limpieza programada borra fila y carpeta de un borrador sin cambios en
+  30 días, y no toca uno actualizado ayer.
+- Subir un segundo archivo para la misma pregunta deja uno solo.

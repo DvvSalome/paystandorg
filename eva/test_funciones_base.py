@@ -118,6 +118,12 @@ def suite_ofac(m):
     check(m.check_ofac("AL-QAIDA NETWORK", sdn)[0], "contiene un nombre de la lista")
     check(not m.check_ofac("AL", sdn)[0], "nombre muy corto → sin falso positivo")
     check(not m.check_ofac("", sdn)[0], "vacío → sin coincidencia")
+    # 2026-11-13: la lista viene sin acentos y a las personas como "APELLIDO, Nombre".
+    sdn2 = [("FUNDACION EJEMPLO SANCIONADA", ""), ("RAMIREZ NUNEZ, Jose Antonio", "VEN")]
+    check(m.check_ofac("Fundación Ejemplo Sancionada", sdn2)[0], "con acentos coincide con la lista sin acentos")
+    check(m.check_ofac("José Antonio Ramírez Núñez", sdn2)[0], "persona: nombre y apellidos en otro orden")
+    check(not m.check_ofac("José Ramírez", sdn2)[0], "solo parte del nombre de la persona → no coincide")
+    check(not m.check_ofac("Fundación Semillas Digitales", sdn2)[0], "una sola palabra en común → no coincide")
 
 
 def suite_documents(m):

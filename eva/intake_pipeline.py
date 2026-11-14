@@ -343,6 +343,17 @@ def normalize_option_fields(fields):
     return fields
 
 
+# Hard gates (EVA parameters, Paso 2; decided by Iván 2026-11-13). Any of
+# these keeps the semáforo RED until a person releases it, and counts as a
+# critical flag (manual review before committee). Until 2026-11-13 the code
+# treated a different set as critical (name mismatch and missing nonprofit
+# proof, which the parameters call soft) and never let a flag touch the
+# semáforo, so an application on the OFAC list could come out GREEN.
+HARD_GATE_FLAGS = [
+    "ofac_flag", "eligibility_incomplete", "child_protection_missing",
+    "disclosure_present", "missing_legal_name",
+]
+
 # Eligibility checklist (0.2). Four statements; the form lets an applicant
 # continue with fewer if they explain in K2 (decision 2026-11-13), on the
 # understanding that Eva sends any incomplete checklist to manual review. That
@@ -2195,19 +2206,40 @@ def download_ofac_sdn():
     return entries, metadata
 
 
+def _ofac_norm(text):
+    """
+    Lower-case, accents removed, punctuation to spaces. The SDN list is ASCII
+    ("FUNDACION ...", "RAMIREZ NUNEZ, Jose"); until 2026-11-13 the comparison
+    kept accents, so "Fundación ..." could never match "FUNDACION ...".
+    """
+    t = unicodedata.normalize("NFKD", str(text or "").lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    t = re.sub(r"[^a-z0-9]+", " ", t)
+    return " ".join(t.split())
+
+
 def check_ofac(name, sdn_entries):
     """Check a name against OFAC SDN list. Returns (match: bool, details: str)."""
     if not name or not sdn_entries:
         return False, ""
 
-    norm_name = normalize_text(name)
+    norm_name = _ofac_norm(name)
     if not norm_name or len(norm_name) < 3:
         return False, ""
+    name_tokens = set(norm_name.split())
 
     for sdn_name, sdn_country in sdn_entries:
-        norm_sdn = normalize_text(sdn_name)
+        norm_sdn = _ofac_norm(sdn_name)
         if not norm_sdn:
             continue
+
+        # Same words in another order. People are listed "LAST, First", so
+        # "Jose Ramirez Nunez" against "RAMIREZ NUNEZ, Jose" never matched by
+        # string. Every word of a 2+-word SDN entry present in the name is a
+        # match; a false positive costs a manual review, a miss costs more.
+        sdn_tokens = set(norm_sdn.split())
+        if len(sdn_tokens) >= 2 and sdn_tokens <= name_tokens:
+            return True, f"WORDS match: '{sdn_name}' ({sdn_country})"
 
         # Exact match
         if norm_name == norm_sdn:
@@ -3660,8 +3692,7 @@ def step_flag(applications, run_id, drive_api=None):
 
         flag_count = 0
         critical_count = 0
-        critical_flags = ["ofac_flag", "name_mismatch", "missing_nonprofit_proof", "renewal_discrepancy",
-                          "eligibility_incomplete", "missing_legal_name"]
+        critical_flags = HARD_GATE_FLAGS
 
         for fk in all_flag_keys:
             val = flags.get(fk, "")
@@ -4350,11 +4381,22 @@ def step_score(applications, scorecard_cfg, run_id):
         score_row["Total_Normalized"] = normalized
 
         if normalized >= semaphore_green:
-            score_row["Semaforo"] = "GREEN"
+            by_score = "GREEN"
         elif normalized >= semaphore_yellow:
-            score_row["Semaforo"] = "YELLOW"
+            by_score = "YELLOW"
         else:
-            score_row["Semaforo"] = "RED"
+            by_score = "RED"
+        score_row["Semaforo_By_Score"] = by_score
+        # A hard gate holds the semáforo RED until a person releases it; the
+        # score-based colour stays next to it so the reviewer sees both.
+        app_flags = app.get("flags")
+        if app_flags is None:
+            gates = []
+            score_row["Semaforo_Hold"] = "flags not evaluated"
+        else:
+            gates = [g for g in HARD_GATE_FLAGS if app_flags.get(g) == "YES"]
+            score_row["Semaforo_Hold"] = ", ".join(gates)
+        score_row["Semaforo"] = "RED" if gates else by_score
 
         notes = [f"4 criteria scored deterministically. Total {total_score}/{max_available}."]
         if max_available != 100:
@@ -4458,9 +4500,11 @@ def step_package(applications, run_id):
             suggested = "Complete LLM scoring, then review"
         elif has_flags == "YES" and flags.get("Critical_Flags_Count", 0) > 0:
             suggested = "Manual review before committee (critical flags)"
-        elif semaforo == "🟢":
+        # The semáforo is stored as GREEN / YELLOW / RED. This compared it to
+        # emoji until 2026-11-13, so every application got the last branch.
+        elif semaforo == "GREEN":
             suggested = "Approve for committee review"
-        elif semaforo == "🟡":
+        elif semaforo == "YELLOW":
             suggested = "Committee review with attention to flags"
         else:
             suggested = "Manual review before committee"
@@ -4611,7 +4655,7 @@ TAB_COLUMNS = {
         "Measurable_Result_Reason", "Score_Ability_To_Deliver", "Ability_To_Deliver_Reason",
         "Cost_Per_Participant_Status", "Dependency_Ratio", "Dependency_Band",
         "Dependency_Note", "Score_Value_Sustainability", "Value_Sustainability_Reason",
-        "Total_Score", "Score_Max_Available", "Total_Normalized", "Semaforo", "Scoring_Notes",
+        "Total_Score", "Score_Max_Available", "Total_Normalized", "Semaforo", "Semaforo_By_Score", "Semaforo_Hold", "Scoring_Notes",
     ],
     TAB_PACKAGE: [
         "App_ID", "Timestamp", "Grantee_Name", "Project_Title", "Profile", "Pillar",
@@ -4985,9 +5029,9 @@ def update_dashboard(sheets_api, spreadsheet_id, applications, run_id):
         20: regions.get("Sub-Saharan Africa", 0),
         21: regions.get("MENA", 0),
         # row 22 is blank
-        23: semaforos.get("🟢", 0),
-        24: semaforos.get("🟡", 0),
-        25: semaforos.get("🔴", 0),
+        23: semaforos.get("GREEN", 0),   # stored as words; counted emoji until 2026-11-13
+        24: semaforos.get("YELLOW", 0),
+        25: semaforos.get("RED", 0),
         # row 26 is blank
         27: flagged,
         28: critical,

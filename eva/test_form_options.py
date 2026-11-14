@@ -126,10 +126,10 @@ def application(F, **over):
     return f
 
 
-def run(m, fields, run_id):
+def run(m, fields, run_id, app_id="APP-2027-9001"):
     """La solicitud por los pasos reales, desde la normalización de la ingesta."""
     fields = dict(fields)   # sin normalizar: eso lo tiene que hacer el pipeline
-    app = {"app_id": "APP-2027-9001", "timestamp": fields["timestamp"],
+    app = {"app_id": app_id, "timestamp": fields["timestamp"],
            "timestamp_raw": fields["timestamp"], "fields": fields, "row_index": 2,
            "grantee_id": None, "grantee_match_status": "NEW", "grantee_matched_name": fields["B1"],
            "is_renewal": False, "grantee_registry_data": {}, "seg_2027_data": None}
@@ -265,6 +265,46 @@ def main():
             out = m.step_write(None, apps, pkg_rows, cfg, "RUN-OK", [], "manual", "test")
         check(writes and len(writes[0]) == 5, "con las columnas completas se escriben las cinco pestañas", got=writes)
         check(m.load_watermark("test")["last_timestamp"] is not None, "y el watermark avanza")
+        print("\n7. Filtros duros, semáforo y siguiente paso")
+        ok_ofac = m.download_ofac_sdn
+        clean = run(m, application(F), "sem-clean")
+        sc = clean["score"]
+        check(sc["Semaforo_Hold"] == "" and sc["Semaforo"] == sc["Semaforo_By_Score"],
+              "sin filtro duro, el semáforo es el del puntaje", got=(sc["Semaforo"], sc["Semaforo_Hold"]))
+        check(clean["flags"].get("missing_nonprofit_proof") == "YES"
+              and clean["flags"].get("Critical_Flags_Count") == 0,
+              "falta de prueba no lucrativa: bandera visible pero NO crítica (suave, según los parámetros)",
+              got=clean["flags"].get("Critical_Flags_Count"))
+        m.download_ofac_sdn = lambda *a, **k: ([("FUNDACION SEMILLAS DIGITALES", "")], {
+            "source": "test", "download_date": "", "entry_count": 1,
+            "cache_path": "", "cache_age_days": 0, "cache_fresh": True})
+        try:
+            hit = run(m, application(F), "sem-ofac", app_id="APP-2027-9002")
+        finally:
+            m.download_ofac_sdn = ok_ofac
+        hs = hit["score"]
+        check(hit["flags"].get("ofac_flag") == "YES", "la solicitud de prueba coincide con la lista OFAC simulada")
+        check(hs["Semaforo"] == "RED", "OFAC deja el semáforo en ROJO (antes podía salir verde)", got=hs["Semaforo"])
+        check(hs["Semaforo_By_Score"] == sc["Semaforo_By_Score"] and hs["Total_Score"] == sc["Total_Score"],
+              "el puntaje y su color se conservan aparte para el revisor")
+        check("ofac_flag" in hs["Semaforo_Hold"], "y Semaforo_Hold dice por qué", got=hs["Semaforo_Hold"])
+        four = "; ".join(o for o in F["0.2"]["options"] if "charitable" not in o.lower())
+        el = run(m, application(F, **{"0.2": four, "K2": "Somos una cooperativa."}), "sem-elig")
+        check(el["score"]["Semaforo"] == "RED" and "eligibility_incomplete" in el["score"]["Semaforo_Hold"],
+              "elegibilidad incompleta también lo deja en rojo")
+
+        (m.RUNS_DIR / "sem").mkdir(parents=True, exist_ok=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            pk = m.step_package([clean, hit], "sem").get("package_rows") or []
+        steps_ = {r["app_id"]: r["Suggested_Next_Step"] for r in pk}
+        check(len(set(steps_.values())) == 2,
+              "el siguiente paso ya no es igual para todas (comparaba contra emojis)", got=steps_)
+        check(any("critical" in v for v in steps_.values()), "OFAC → revisión manual antes del comité", got=steps_)
+        import inspect
+        src_ = (HERE / "intake_pipeline.py").read_text(encoding="utf-8")   # la sección 6 la reemplazó
+        dash = src_[src_.index("def update_dashboard("):src_.index("\ndef ", src_.index("def update_dashboard(") + 10)]
+        check('semaforos.get("GREEN"' in dash and "🟢" not in dash,
+              "el tablero cuenta GREEN/YELLOW/RED, como se guardan")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

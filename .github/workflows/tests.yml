@@ -25,6 +25,9 @@ jobs:
       - name: Drafts — save and resume
         run: node tests/drafts.test.mjs
 
+      - name: Email — one rule in the form and the server
+        run: node tests/email.test.mjs
+
   python:
     runs-on: ubuntu-latest
     steps:

@@ -19,11 +19,23 @@ tiene correo, el primer guardado no pregunta; volver en el mismo navegador
 muestra "Welcome back" y restaura el borrador con los dos correos llenos; y
 se ve bien a 375 px de ancho.
 
+**También hecho (2026-11-13): bloqueos de formato en todos los correos**
+—D1, la tarjeta, D3 y D4—. Espacios, comas, `<`, `>` y una segunda `@` se
+quitan al escribir; pegar "Ana Ruiz <ana@x.org>" deja solo `ana@x.org`; al
+salir del campo con algo incompleto aparece "Enter a complete email address".
+Una sola regla (`EMAIL_RE` en `_shared/drafts.js`), que el servidor ahora
+**sí** aplica al enviar —antes no revisaba nada—. `tests/email.test.mjs`
+falla si la copia del navegador se separa de la del servidor.
+
 **Falta, para Salomé — el envío:**
 
 1. En `drafts.js`, enviar el correo en la rama de creación (`store.insert`),
    sin que su fallo afecte el guardado, con límite por dirección.
-2. Elegir proveedor y guardar su llave con los secretos.
+2. Proveedor: **ya hay uno integrado.** `/finalize` en
+   `supabase/functions/intake/index.ts` envía el correo de confirmación con
+   Resend, usando los secretos `RESEND_API_KEY` y `EMAIL_FROM`. Reusar esa
+   misma integración para el código evita un segundo proveedor y un segundo
+   juego de llaves.
 3. Cuando el envío funcione, poner `emailCodes: true` en
    `site/assets/config.js`. **Solo entonces** el formulario dice "We sent it
    to …". Mientras esté en `false` dice "Write this code down now: there is

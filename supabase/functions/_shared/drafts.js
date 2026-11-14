@@ -6,6 +6,20 @@
 export const CODE_RE = /^GA27-[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}$/;
 const ALPHABET = "ACDEFGHJKLMNPQRTUVWXY34789";      // no 0/O, 1/I/L, 2/Z, 5/S, 6/G, 8/B look-alikes
 export const MAX_STATE_CHARS = 200_000;
+
+// The one email rule. The browser (site/assets/form.js) carries an identical
+// copy because it cannot import this file; tests/email.test.mjs fails if the
+// two drift. Before this there were three rules: the form's submit check
+// required a dot, the save card did not ("ana@x" passed), and the server
+// checked nothing at all — so a direct API call could store "hola" as the
+// contact address.
+//   local part: no spaces, no @
+//   domain: labels without spaces, @ or empty parts, at least one dot,
+//           ending in a label of two or more characters
+export const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+export function isEmail(x) {
+  return typeof x === "string" && x.trim().length <= 200 && EMAIL_RE.test(x.trim());
+}
 export const MAX_AGE_DAYS = 60;
 
 export function makeCode(randomBytes) {
@@ -34,7 +48,7 @@ export async function saveDraft(store, body, ipHash, randomBytes) {
   if (!state) return { status: 422, body: { error: "Nothing to save, or the form is too large." } };
   const sections = Array.isArray(body.saved_sections)
     ? body.saved_sections.filter((s) => typeof s === "string" && /^[A-Z0-9]{1,3}$/.test(s)).slice(0, 30) : [];
-  const email = typeof state.email === "string" && /^[^\s@]+@[^\s@]+$/.test(state.email) ? state.email.toLowerCase().slice(0, 200) : null;
+  const email = isEmail(state.email) ? state.email.trim().toLowerCase() : null;
 
   if (body.code) {
     const code = normalizeCode(body.code);

@@ -468,6 +468,20 @@ function sheetSafe(s) {
 const CODE_RE = /^GA27-[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}$/;
 const ALPHABET = "ACDEFGHJKLMNPQRTUVWXY34789";      // no 0/O, 1/I/L, 2/Z, 5/S, 6/G, 8/B look-alikes
 const MAX_STATE_CHARS = 200_000;
+
+// The one email rule. The browser (site/assets/form.js) carries an identical
+// copy because it cannot import this file; tests/email.test.mjs fails if the
+// two drift. Before this there were three rules: the form's submit check
+// required a dot, the save card did not ("ana@x" passed), and the server
+// checked nothing at all — so a direct API call could store "hola" as the
+// contact address.
+//   local part: no spaces, no @
+//   domain: labels without spaces, @ or empty parts, at least one dot,
+//           ending in a label of two or more characters
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+function isEmail(x) {
+  return typeof x === "string" && x.trim().length <= 200 && EMAIL_RE.test(x.trim());
+}
 const MAX_AGE_DAYS = 60;
 
 function makeCode(randomBytes) {
@@ -496,7 +510,7 @@ async function saveDraft(store, body, ipHash, randomBytes) {
   if (!state) return { status: 422, body: { error: "Nothing to save, or the form is too large." } };
   const sections = Array.isArray(body.saved_sections)
     ? body.saved_sections.filter((s) => typeof s === "string" && /^[A-Z0-9]{1,3}$/.test(s)).slice(0, 30) : [];
-  const email = typeof state.email === "string" && /^[^\s@]+@[^\s@]+$/.test(state.email) ? state.email.toLowerCase().slice(0, 200) : null;
+  const email = isEmail(state.email) ? state.email.trim().toLowerCase() : null;
 
   if (body.code) {
     const code = normalizeCode(body.code);
@@ -625,8 +639,21 @@ async function submit(req: Request) {
   const { errors, profile, route } = validate(G, answers, files);
   if (Object.keys(errors).length) return json(req, 422, { error: "Some answers need attention.", fields: errors });
 
-  const email = String(answers.D1__email || "").toLowerCase();
-  if (email && (await rateLimited("email:" + email, 3, 24 * 60))) {
+  // The contact email is required and must be a real address. The form
+  // blocks anything else, but this endpoint is public: without this check a
+  // direct request could submit with "hola" or nothing as the only way to
+  // reach the applicant.
+  const email = String(answers.D1__email || "").trim().toLowerCase();
+  if (!isEmail(email)) {
+    return json(req, 422, { error: "Some answers need attention.", fields: { D1: "Enter a valid email address." } });
+  }
+  // The other addresses on the form are optional, but when present they get
+  // the same rule: the signer (D3) and the copy address (D4).
+  const others: Record<string, string> = {};
+  if (answers.D3__email && !isEmail(String(answers.D3__email))) others.D3 = "Enter a valid email address for the signer.";
+  if (answers.D4 && !isEmail(String(answers.D4))) others.D4 = "Enter a valid email address.";
+  if (Object.keys(others).length) return json(req, 422, { error: "Some answers need attention.", fields: others });
+  if (await rateLimited("email:" + email, 3, 24 * 60)) {
     return json(req, 429, { error: "This email already submitted several applications today." });
   }
 

@@ -116,6 +116,9 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .card-lead { margin: 0; line-height: 1.5; }
 .card-hint { font-size: .86rem; opacity: .8; }
 .card-err { font-size: .9rem; color: #7a2412; }
+/* inline format error under an email input */
+.fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
+input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }
 .codecard .linkbtn { justify-self: start; }
@@ -608,6 +611,75 @@ window.GA27_CONFIG = {
   function money(n) { return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 }); }
   function isOrg() { return (V.A1 || "").indexOf("Organization") === 0; }
 
+  /* ---------- email ----------
+     Identical to EMAIL_RE in supabase/functions/_shared/drafts.js, which the
+     server enforces. This file cannot import it, so tests/email.test.mjs
+     fails if the two differ. */
+  var EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+  function validEmail(x) { return typeof x === "string" && x.trim().length <= 200 && EMAIL_RE.test(x.trim()); }
+  // Characters that can never be part of an address. Typing them is blocked;
+  // they are also what appears when someone pastes "Ana <ana@x.org>" or a list.
+  var EMAIL_BAD = /[\s,;:<>()\[\]"\\]/g;
+  var EMAIL_FIND = /[^\s@<>()\[\],;:"]+@[^\s@<>()\[\],;:"]+\.[^\s@<>()\[\],;:".]{2,}/;
+  function cleanEmail(v) {
+    v = String(v || "").replace(EMAIL_BAD, "");
+    var at = v.indexOf("@");
+    if (at !== -1) v = v.slice(0, at + 1) + v.slice(at + 1).replace(/@/g, "");
+    return v.slice(0, 200);
+  }
+  // Format blockers for an email input, so only an address can go in:
+  //   - spaces, commas, angle brackets and the like are dropped as typed
+  //   - a second @ is dropped as typed
+  //   - pasting "Ana Ruiz <ana@x.org>" keeps just ana@x.org
+  //   - leaving the field with something that is not an address shows why
+  // Changes go through an "input" event so every listener (D1's composite
+  // handler, the save card binding) sees the cleaned value.
+  function guardEmail(input, errEl) {
+    input.maxLength = 200;
+    input.spellcheck = false;
+    input.setAttribute("autocapitalize", "off");
+    function setTo(v) {
+      if (input.value === v) return;
+      input.value = v;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    function showErr(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg || "";
+      errEl.hidden = !msg;
+      if (msg) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
+    }
+    // Clean on every input instead of refusing keystrokes. Phone keyboards,
+    // predictive text and autofill insert whole chunks like "ana " at once;
+    // refusing the chunk would leave the field empty with no explanation.
+    // Stripping keeps what is valid. This listener is registered before any
+    // other on the input (D1's composite handler, the save-card binding), so
+    // they all read the cleaned value in the same event.
+    input.addEventListener("input", function () {
+      var c = cleanEmail(input.value);
+      if (c !== input.value) input.value = c;
+    });
+    input.addEventListener("paste", function (e) {
+      var text = (e.clipboardData || window.clipboardData).getData("text") || "";
+      var found = text.match(EMAIL_FIND);
+      e.preventDefault();
+      setTo(found ? found[0].slice(0, 200) : cleanEmail(input.value + text));
+    });
+    input.addEventListener("input", function () {
+      if (errEl && !errEl.hidden && validEmail(input.value)) showErr("");
+    });
+    input.addEventListener("blur", function () {
+      setTo(cleanEmail(input.value));
+      showErr(input.value && !validEmail(input.value) ? "Enter a complete email address, like name@example.org." : "");
+    });
+    return { check: function () {
+      setTo(cleanEmail(input.value));
+      var bad = input.value && !validEmail(input.value);
+      showErr(bad ? "Enter a complete email address, like name@example.org." : "");
+      return !bad;
+    } };
+  }
+
   /* ---------- rendering ---------- */
   SECTIONS.forEach(function (sec) {
     var box = el("fieldset", "sec");
@@ -731,8 +803,18 @@ window.GA27_CONFIG = {
       case "text": case "email": case "url": {
         var inp = reg(el("input"));
         inp.type = f.type;
+        // Every email field gets the same format blockers as D1 — D4 (copy
+        // address) included. Registered before the value listener so it
+        // reads the cleaned value.
+        var ierr = null;
+        if (f.type === "email") {
+          inp.autocomplete = "email";
+          ierr = el("span", "fielderr"); ierr.hidden = true; ierr.setAttribute("role", "alert");
+          guardEmail(inp, ierr);
+        }
         inp.addEventListener("input", function () { V[f.id] = inp.value; refresh(); });
         body.appendChild(inp);
+        if (ierr) body.appendChild(ierr);
         break;
       }
       case "valuedate": {
@@ -905,11 +987,17 @@ window.GA27_CONFIG = {
       }
       case "composite": {
         var cr = el("div", f.parts.length > 3 ? "row2" : "row3");
+        var emailErrHosts = [];
         var vals = {};
         f.parts.forEach(function (p) {
           var pi = el("input"); pi.type = p.t; pi.placeholder = p.ph;
           pi.setAttribute("aria-label", f.label + " — " + p.ph);
-          if (p.k === "email") pi.autocomplete = "email";
+          if (p.k === "email") {
+            pi.autocomplete = "email";
+            var perr = el("span", "fielderr"); perr.hidden = true; perr.setAttribute("role", "alert");
+            emailErrHosts.push({ input: pi, err: perr });
+            guardEmail(pi, perr);
+          }
           if (p.k === "name") pi.autocomplete = "name";
           if (p.k === "phone") pi.autocomplete = "tel";
           pi.addEventListener("input", function () {
@@ -922,6 +1010,7 @@ window.GA27_CONFIG = {
           cr.appendChild(pi);
         });
         body.appendChild(cr);
+        emailErrHosts.forEach(function (h) { body.appendChild(h.err); });
         break;
       }
       case "milestones": {
@@ -1109,8 +1198,20 @@ window.GA27_CONFIG = {
       Object.keys(cats).forEach(function (k) { sum += num(cats[k]) || 0; });
       if (V.G4 && Math.abs(sum - g2) >= 1) p.G4 = "The categories add up to " + money(sum) + ", but the amount requested is " + money(g2) + ".";
     }
+    F.forEach(function (f) {
+      if (f.type === "email" && visible(f) && V[f.id] && !validEmail(V[f.id]))
+        p[f.id] = "Enter a complete email address, like name@example.org.";
+    });
+    var d3f = F.filter(function (x) { return x.id === "D3"; })[0];
+    if (d3f && visible(d3f) && V.D3__email && !validEmail(V.D3__email))
+      p.D3 = "Enter a complete email address for the signer, like name@example.org.";
+    // The contact email is required and must be a complete address — the
+    // same rule the server enforces on submit.
     var em = V.D1__email;
-    if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) p.D1 = "Enter a valid email address.";
+    // An empty D1 is already reported as missing; this catches a D1 with a
+    // name or phone but no email, which "required" alone would let through.
+    if (!p.D1 && !em && V.D1) p.D1 = "Add the contact email address.";
+    else if (em && !validEmail(em)) p.D1 = "Enter a complete email address, like name@example.org.";
     return p;
   }
 
@@ -1306,13 +1407,10 @@ window.GA27_CONFIG = {
     acts.appendChild(go); acts.appendChild(skip);
     card.appendChild(lab); card.appendChild(mi); card.appendChild(hint); card.appendChild(err); card.appendChild(acts);
 
-    mi.addEventListener("input", function () { err.hidden = true; setSaveEmail(mi.value); });
+    var guard = guardEmail(mi, err);
+    mi.addEventListener("input", function () { setSaveEmail(mi.value); });
     function confirm() {
-      var v = mi.value.trim();
-      if (v && !validEmail(v)) {
-        err.textContent = "That doesn't look like an email address.";
-        err.hidden = false; mi.focus(); return;
-      }
+      if (!guard.check()) { mi.focus(); return; }
       card.hidden = true;
       saveDraft(card.dataset.host, { confirmed: true });
     }
@@ -1409,7 +1507,6 @@ window.GA27_CONFIG = {
     // Never overwrite the field while the person is typing in it.
     if (savebar.email !== document.activeElement && savebar.email.value !== v) savebar.email.value = v;
   }
-  function validEmail(x) { return /^[^\s@]+@[^\s@]+$/.test(x || ""); }
   // Whether the code was actually emailed. CFG.emailCodes stays false until
   // the server sends mail; until then the honest message is "write it down",
   // never "we sent it" (commit 0effcb5 removed one such promise already).

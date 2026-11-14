@@ -31,6 +31,9 @@ jobs:
       - name: Multi-part questions — every part, in the form and the server
         run: node tests/completeness.test.mjs
 
+      - name: Dates — shown MM/DD/YYYY, stored YYYY-MM-DD
+        run: node tests/dates.test.mjs
+
   python:
     runs-on: ubuntu-latest
     steps:

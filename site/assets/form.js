@@ -40,6 +40,82 @@
   function money(n) { return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 }); }
   function isOrg() { return (V.A1 || "").indexOf("Organization") === 0; }
 
+  /* ---------- dates ----------
+     Shown as MM/DD/YYYY, stored as YYYY-MM-DD.
+
+     Shown in the US format because that is the convention the foundation
+     uses. It cannot be done with <input type="date">: the browser picks
+     that format from the person's own language settings, so Chrome in
+     Spanish shows dd/mm/aaaa no matter what the page says.
+
+     Stored as ISO because it has exactly one reading. Eva's pipeline tries
+     %d/%m/%Y before %m/%d/%Y (intake_pipeline.py, _DATE_FORMATS), so a
+     stored "03/04/2027" would silently become 3 April. Nothing downstream
+     changes: every value still reaches Supabase and Eva as YYYY-MM-DD.
+
+     A calendar button opens the browser's own picker for people who prefer
+     it; what they pick is written back in MM/DD/YYYY. */
+  function isoToUS(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+    return m ? m[2] + "/" + m[3] + "/" + m[1] : "";
+  }
+  function usToISO(us) {
+    var m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(us || "");
+    if (!m) return "";
+    var mo = +m[1], d = +m[2], y = +m[3];
+    if (y < 1900 || y > 2100 || mo < 1 || mo > 12) return "";
+    if (d < 1 || d > new Date(y, mo, 0).getDate()) return "";      // 02/30, 04/31 …
+    return m[3] + "-" + m[1] + "-" + m[2];
+  }
+  // Keeps what is typed in MM/DD/YYYY shape: digits only, slashes added.
+  function maskUS(v) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return isoToUS(v);         // pasted ISO, or a draft saved before this change
+    var d = String(v || "").replace(/\D/g, "").slice(0, 8);
+    return d.slice(0, 2) + (d.length > 2 ? "/" + d.slice(2, 4) : "") + (d.length > 4 ? "/" + d.slice(4, 8) : "");
+  }
+  var CAL_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  function usDate(label, onchange) {
+    var wrap = el("span", "usdate");
+    var t = el("input"); t.type = "text"; t.inputMode = "numeric"; t.autocomplete = "off";
+    t.placeholder = "MM/DD/YYYY"; t.maxLength = 10;
+    t.setAttribute("aria-label", label + ", MM/DD/YYYY");
+    var btn = el("button", "usdate-btn"); btn.type = "button"; btn.innerHTML = CAL_SVG;
+    btn.setAttribute("aria-label", "Choose " + label.toLowerCase() + " on a calendar");
+    var pick = el("input"); pick.type = "date"; pick.className = "usdate-pick";
+    pick.tabIndex = -1; pick.setAttribute("aria-hidden", "true");
+    pick.dataset.nosnap = "1";                       // the text field is what a draft stores
+    var err = el("span", "fielderr"); err.hidden = true; err.setAttribute("role", "alert");
+    wrap.appendChild(t); wrap.appendChild(btn); wrap.appendChild(pick); wrap.appendChild(err);
+    var api = { el: wrap, input: t, iso: "" };
+    function showErr(on) {
+      err.hidden = !on;
+      // A complete MM/DD/YYYY that fails is a date that does not exist
+      // (02/30, 13/01); anything shorter is a format problem.
+      err.textContent = !on ? "" : /^\d{2}\/\d{2}\/\d{4}$/.test(t.value)
+        ? "That date does not exist. Check the month and the day."
+        : "Use MM/DD/YYYY, for example 03/15/2027.";
+      if (on) t.setAttribute("aria-invalid", "true"); else t.removeAttribute("aria-invalid");
+    }
+    t.addEventListener("input", function () {
+      var m = maskUS(t.value);
+      if (m !== t.value) t.value = m;
+      api.iso = usToISO(t.value);
+      if (api.iso) showErr(false);
+      onchange(api.iso);
+    });
+    t.addEventListener("blur", function () { showErr(!!t.value && !api.iso); });
+    btn.addEventListener("click", function () {
+      pick.value = api.iso;
+      try { pick.showPicker(); } catch (e) { pick.focus(); pick.click(); }
+    });
+    pick.addEventListener("change", function () {
+      t.value = isoToUS(pick.value);
+      t.dispatchEvent(new Event("input", { bubbles: true }));
+      t.focus();
+    });
+    return api;
+  }
+
   /* ---------- email ----------
      Identical to EMAIL_RE in supabase/functions/_shared/drafts.js, which the
      server enforces. This file cannot import it, so tests/email.test.mjs
@@ -251,15 +327,14 @@
         var vv = el("input"); vv.type = "text";
         vv.placeholder = "Figure, e.g. 60 merchants or 80%";
         vv.setAttribute("aria-label", f.label + " — figure");
-        var vd = el("input"); vd.type = "date";
-        vd.setAttribute("aria-label", f.label + " — date");
+        var vd = usDate("Target date", function () { updVD(); });
         var updVD = function () {
-          V[f.id] = vv.value && vd.value ? vv.value + " @ " + vd.value : "";
-          V[f.id + "__value"] = vv.value; V[f.id + "__date"] = vd.value;
+          V[f.id] = vv.value && vd.iso ? vv.value + " @ " + vd.iso : "";
+          V[f.id + "__value"] = vv.value; V[f.id + "__date"] = vd.iso;
           refresh();
         };
-        vv.addEventListener("input", updVD); vd.addEventListener("change", updVD);
-        vr.appendChild(vv); vr.appendChild(vd); body.appendChild(vr);
+        vv.addEventListener("input", updVD);
+        vr.appendChild(vv); vr.appendChild(vd.el); body.appendChild(vr);
         break;
       }
       case "baseline": {
@@ -267,9 +342,8 @@
         var bv = el("input"); bv.type = "text";
         bv.placeholder = "Figure today, e.g. 40 merchants";
         bv.setAttribute("aria-label", f.label + " — figure today");
-        var bd = el("input"); bd.type = "date";
-        bd.setAttribute("aria-label", f.label + " — date measured");
-        br.appendChild(bv); br.appendChild(bd);
+        var bd = usDate("Date measured", function () { updBL(); });
+        br.appendChild(bv); br.appendChild(bd.el);
         var tl = el("label", "opt");
         var tc = el("input"); tc.type = "checkbox";
         tl.appendChild(tc);
@@ -284,16 +358,16 @@
             V[f.id] = pt.value ? "Plan: " + pt.value : "";
             V[f.id + "__mode"] = "plan"; V[f.id + "__plan"] = pt.value;
           } else {
-            V[f.id] = bv.value && bd.value ? bv.value + " @ " + bd.value : "";
+            V[f.id] = bv.value && bd.iso ? bv.value + " @ " + bd.iso : "";
             V[f.id + "__mode"] = "value";
-            V[f.id + "__value"] = bv.value; V[f.id + "__date"] = bd.value;
+            V[f.id + "__value"] = bv.value; V[f.id + "__date"] = bd.iso;
           }
           refresh();
         };
         tc.addEventListener("change", function () {
           pw.hidden = !tc.checked; br.hidden = tc.checked; updBL();
         });
-        bv.addEventListener("input", updBL); bd.addEventListener("change", updBL);
+        bv.addEventListener("input", updBL);
         pt.addEventListener("input", updBL);
         body.appendChild(br); body.appendChild(tl); body.appendChild(pw);
         break;
@@ -346,14 +420,14 @@
       }
       case "datepair": {
         var r = el("div", "row2");
-        var d1 = el("input"); d1.type = "date"; d1.setAttribute("aria-label", "Start date");
-        var d2 = el("input"); d2.type = "date"; d2.setAttribute("aria-label", "End date");
+        var d1 = usDate("Start date", function () { updD(); });
+        var d2 = usDate("End date", function () { updD(); });
         var dn = el("div", "computed", "Duration will be calculated from these dates.");
         var updD = function () {
-          V[f.id] = d1.value && d2.value ? d1.value + " to " + d2.value : "";
-          V[f.id + "__start"] = d1.value; V[f.id + "__end"] = d2.value;
-          if (d1.value && d2.value) {
-            var a = new Date(d1.value), b = new Date(d2.value);
+          V[f.id] = d1.iso && d2.iso ? d1.iso + " to " + d2.iso : "";
+          V[f.id + "__start"] = d1.iso; V[f.id + "__end"] = d2.iso;
+          if (d1.iso && d2.iso) {
+            var a = new Date(d1.iso + "T00:00:00"), b = new Date(d2.iso + "T00:00:00");
             var m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
             if (b.getDate() < a.getDate()) m -= 1;
             V[f.id + "__months"] = m;
@@ -362,8 +436,7 @@
           } else dn.textContent = "Duration will be calculated from these dates.";
           refresh();
         };
-        d1.addEventListener("change", updD); d2.addEventListener("change", updD);
-        r.appendChild(d1); r.appendChild(d2);
+        r.appendChild(d1.el); r.appendChild(d2.el);
         body.appendChild(r); body.appendChild(dn);
         break;
       }
@@ -454,16 +527,22 @@
           var tr = el("tr");
           [["m", "text"], ["d", "date"], ["e", "text"]].forEach(function (c) {
             var td = el("td");
-            var ii = el("input"); ii.type = c[1];
-            ii.setAttribute("aria-label", "Milestone " + (i + 1) + " " + c[0]);
-            ii.addEventListener("input", function () {
-              rowv[c[0]] = ii.value;
+            var setCell = function (val) {
+              rowv[c[0]] = val;
               V[f.id] = rows.map(function (rr) { return [rr.m, rr.d, rr.e].filter(Boolean).join(" | "); })
                 .filter(Boolean).join("; ");
               V[f.id + "__rows"] = rows.map(function (rr) { return { milestone: rr.m || "", date: rr.d || "", evidence: rr.e || "" }; });
               refresh();
-            });
-            td.appendChild(ii); tr.appendChild(td);
+            };
+            if (c[1] === "date") {
+              td.appendChild(usDate("Milestone " + (i + 1) + " target date", setCell).el);
+            } else {
+              var ii = el("input"); ii.type = c[1];
+              ii.setAttribute("aria-label", "Milestone " + (i + 1) + " " + (c[0] === "m" ? "description" : "evidence"));
+              ii.addEventListener("input", function () { setCell(ii.value); });
+              td.appendChild(ii);
+            }
+            tr.appendChild(td);
           });
           tbody.appendChild(tr);
         });
@@ -579,11 +658,14 @@
         var sn = reg(el("input")); sn.type = "text"; sn.placeholder = "Full name";
         sn.autocomplete = "name";
         sn.setAttribute("aria-label", "Name of the person submitting");
-        var sd = el("input"); sd.type = "date"; sd.valueAsDate = new Date(); sd.readOnly = true;
-        sd.setAttribute("aria-label", "Date");
+        // Today, shown in MM/DD/YYYY and stored as ISO like every other date.
+        var now = new Date();
+        var todayISO = now.getFullYear() + "-" + ("0" + (now.getMonth() + 1)).slice(-2) + "-" + ("0" + now.getDate()).slice(-2);
+        var sd = el("input"); sd.type = "text"; sd.value = isoToUS(todayISO); sd.readOnly = true;
+        sd.setAttribute("aria-label", "Date, MM/DD/YYYY");
         sn.addEventListener("input", function () {
-          V[f.id] = sn.value ? sn.value + ", " + sd.value : "";
-          V[f.id + "__name"] = sn.value; V[f.id + "__date"] = sd.value;
+          V[f.id] = sn.value ? sn.value + ", " + todayISO : "";
+          V[f.id + "__name"] = sn.value; V[f.id + "__date"] = todayISO;
           refresh();
         });
         sr.appendChild(sn); sr.appendChild(sd); body.appendChild(sr);
@@ -985,7 +1067,7 @@
 
   function draftControls(wrap) {
     return Array.prototype.filter.call(wrap.querySelectorAll("input,textarea,select"), function (c) {
-      return c.type !== "file" && !c.readOnly;
+      return c.type !== "file" && !c.readOnly && !c.dataset.nosnap;
     });
   }
   // Snapshot = the value of every control, in document order, per question. Restoring replays them as

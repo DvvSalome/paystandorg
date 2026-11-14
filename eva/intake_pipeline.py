@@ -3191,7 +3191,6 @@ def step_classify(applications, scorecard_cfg, country_map, region_map, run_id):
             classified["Grantee_ID"] = app.get("grantee_id", "")
             classified["Grantee_Match_Status"] = app.get("grantee_match_status", "")
             classified["2026_Grantee_Match"] = ""
-            classified["2026_Amount_Match"] = ""
             classified["Renewal_Validated"] = ""
             classified["Seguimiento_2027_Status"] = app.get("seg_2027_estatus", "")
             classified["Seguimiento_2027_Tipo"] = app.get("seg_2027_tipo", "")
@@ -4517,6 +4516,69 @@ def step_package(applications, run_id):
 
 # ─── P1.3: Schema validation ─────────────────────────────────────────────────
 # Expected first column header for each tab — used to detect schema drift
+# The columns step_write puts in each results tab. The sheet's row 1 must
+# contain every one of them (any order, case-insensitive): rows are written by
+# header name, and a value whose column is missing is dropped. On 2026-11-13
+# the production sheet still had the v2 headers, so of what the pipeline
+# computes it would have kept 13 of 51 Cleaned values, 12 of 40 Classified and
+# 8 of 22 Scorecard — no stage, no pillars list, none of the four criteria.
+# step_write now refuses to write when columns are missing
+# (missing_result_columns); sync_sheet_headers.py fixes row 1.
+# test_form_options.py checks these lists against what a real run produces.
+TAB_COLUMNS = {
+    TAB_CLEAN: [
+        "App_ID", "Timestamp", "B1_Legal_Name_Clean", "B2_Country_Normalized",
+        "B2_Country_ISO", "B3_Legal_Rep_Clean", "B4_Address_Clean", "B6_Website_Valid",
+        "D1_Contact_Raw", "D1_Email_Extracted", "D1_Phone_Normalized", "D3_Signer_Raw",
+        "D3_Email_Extracted", "D4_Copy_Email_Valid", "B5_Annual_Budget_Num",
+        "E5_Participants_Num", "G1_Total_Budget_Num", "G2_Requested_Num", "E2_Start_Date",
+        "E2_End_Date", "E2_Duration_Months", "E1_Word_Count", "E1_Word_Limit", "E4_Word_Count",
+        "E4_Word_Limit", "E6_Word_Count", "E6_Word_Limit", "E8_Word_Count", "E8_Word_Limit",
+        "E11_Word_Count", "E11_Word_Limit", "F5_Word_Count", "F5_Word_Limit", "G5_Word_Count",
+        "G5_Word_Limit", "G7_Word_Count", "G7_Word_Limit", "J1_Word_Count", "J1_Word_Limit",
+        "E7_Has_Quantity", "E7_Has_Date", "E7_Formula_Complete", "G4_Budget_Sum_Valid",
+        "G4_Budget_Sum_Diff", "G2_Within_G1", "G6_Cost_Per_Participant", "Dependency_Ratio",
+        "Is_Duplicate_Name", "Is_Duplicate_Email", "Cleaning_Flags", "Cleaning_Notes",
+    ],
+    TAB_CLASSIFY: [
+        "App_ID", "Timestamp", "Profile", "A2_Normalized", "Pillar", "Pillars_All",
+        "Pillar_Count", "Pillar_Source", "Pillar_Justification", "Stage_Suggested",
+        "Stage_Source", "Stage_Justification", "F1_Main_Measure", "Stage_Target",
+        "Stage_Target_Source", "Measure_Matches_Stage", "Expected_Measures", "Measure_Basis",
+        "Stage_Jump", "Stage_Reached_2026", "Duration_Months", "Region", "Country_ISO",
+        "Project_Location", "Is_Renewal", "Is_Prior_Grantee", "Route", "Classification_Notes",
+        "Grantee_ID", "Grantee_Match_Status", "2026_Grantee_Match", "Registry_2026_Amount",
+        "Registry_Total_Awarded", "Registry_Prior_Apps", "Renewal_Validated",
+        "Seguimiento_2027_Status", "Seguimiento_2027_Tipo", "Seguimiento_2027_Owner",
+        "Project_Type", "Project_Type_Method",
+    ],
+    TAB_FLAGS: [
+        "App_ID", "Timestamp", "nonsense_repeated_text", "nonsense_random_chars",
+        "nonsense_one_word", "nonsense_text_in_number", "nonsense_copy_paste",
+        "nonsense_short_answer", "nonsense_invalid_email", "nonsense_empty_required",
+        "name_mismatch", "address_mismatch", "ofac_flag", "missing_nonprofit_proof",
+        "duplicate_application", "renewal_discrepancy", "eligibility_incomplete",
+        "child_protection_missing", "disclosure_present", "bitcoin_rule_violation",
+        "budget_invalid", "high_dependency", "suspected_participant_identifiers",
+        "missing_legal_name", "documents_not_stored", "Has_Flags", "Flags_Count",
+        "Critical_Flags_Count", "Flags_Detail",
+    ],
+    TAB_SCORE: [
+        "App_ID", "Timestamp", "Grantee_Name", "Project_Title", "Profile",
+        "Score_Resilience_Fit", "Resilience_Fit_Reason", "Score_Measurable_Result",
+        "Measurable_Result_Reason", "Score_Ability_To_Deliver", "Ability_To_Deliver_Reason",
+        "Cost_Per_Participant_Status", "Dependency_Ratio", "Dependency_Band",
+        "Dependency_Note", "Score_Value_Sustainability", "Value_Sustainability_Reason",
+        "Total_Score", "Score_Max_Available", "Total_Normalized", "Semaforo", "Scoring_Notes",
+    ],
+    TAB_PACKAGE: [
+        "App_ID", "Timestamp", "Grantee_Name", "Project_Title", "Profile", "Pillar",
+        "Pillars_All", "Region", "Is_Renewal", "Total_Score", "Semaforo", "Flags_Summary",
+        "Budget_Summary", "Contact_Summary", "Suggested_Next_Step", "One_Pager_Link",
+        "Documents_Folder",
+    ],
+}
+
 EXPECTED_TAB_HEADERS = {
     TAB_REGISTRY: "Grantee_ID",
     TAB_FORM: "Timestamp",
@@ -4644,6 +4706,7 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
 
     # P1.2: Atomic batch write — prepare all tab data, write in single batchUpdate
     tab_write_list = []
+    tab_headers_by_tab = {}
     for tab_name, rows_list in [
         (TAB_CLEAN, clean_rows),
         (TAB_CLASSIFY, classify_rows),
@@ -4663,6 +4726,7 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
                 data_errors.append(f"{tab_name}: no headers")
                 continue
             tab_headers = header_data[0]
+            tab_headers_by_tab[tab_name] = tab_headers
 
             # Find next empty row
             existing = read_sheet(sheets_api, sheet_id, tab_name)
@@ -4676,6 +4740,34 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
             print(f"  [{tab_name}] PREP ERROR: {type(e).__name__}: {e}")
             write_errors.append(f"{tab_name}: prep: {type(e).__name__}: {str(e)[:100]}")
             data_errors.append(f"{tab_name}: prep")
+
+    # Every value must have a column. Checked for all tabs BEFORE writing any,
+    # so a tab with missing columns cannot leave the others half-written; and
+    # the watermark is held, so nothing is skipped once row 1 is fixed.
+    missing_cols = {}
+    for tab_name, rows_list in [(TAB_CLEAN, clean_rows), (TAB_CLASSIFY, classify_rows),
+                                (TAB_FLAGS, flag_rows), (TAB_SCORE, score_rows),
+                                (TAB_PACKAGE, package_rows)]:
+        headers = next((h for t, h in tab_headers_by_tab.items() if t == tab_name), None)
+        if headers is None or not rows_list:
+            continue
+        have = {str(h).strip().lower() for h in headers}
+        keys = []
+        for r in rows_list:
+            for key in r:
+                if key.lower() not in have and key not in keys:
+                    keys.append(key)
+        if keys:
+            missing_cols[tab_name] = keys
+    if missing_cols:
+        for tab_name, keys in missing_cols.items():
+            msg = (f"missing_result_columns: '{tab_name}' lacks {len(keys)} column(s): "
+                   f"{', '.join(keys[:12])}{' …' if len(keys) > 12 else ''}")
+            print(f"  [{tab_name}] ✗ {msg}")
+            write_errors.append(msg)
+            data_errors.append(msg)
+        print("  Nothing written to the result tabs. Run sync_sheet_headers.py, then re-run.")
+        tab_write_list = []
 
     # Atomic write: all tabs in one batchUpdate call
     if tab_write_list:

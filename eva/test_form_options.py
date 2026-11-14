@@ -216,6 +216,55 @@ def main():
         a = run(m, application(F, **{"0.2": ""}), "elig0")
         check("no_K2_explanation" in a["flags"].get("Flags_Detail", ""),
               "0.2 vacío y sin K2 → bandera, y lo dice", got=a["flags"].get("Flags_Detail"))
+        print("\n6. Cada valor que se escribe tiene su columna en la hoja")
+        variants = {
+            "organización nueva": {},
+            "individuo": {"A1": opt(F, "A1", "Individual"), "A1b": "", "A2": opt(F, "A2", "Less than 1"),
+                          "G4": "", "G5": "Talleres, billeteras y el punto de wifi del mercado del barrio."},
+            "renovación 2026": {"A3": opt(F, "A3", "Yes, in 2026"), "J1": "Prometimos 50, logramos 61.",
+                                "J2": opt(F, "J2", "Useful adoption")},
+        }
+        apps = [run(m, application(F, **over), f"cols-{i}") for i, over in enumerate(variants.values())]
+        import contextlib, io
+        (m.RUNS_DIR / "cols").mkdir(parents=True, exist_ok=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            pkg = m.step_package(apps, "cols")
+        pkg_rows = pkg.get("package_rows") or []
+        produced = {
+            m.TAB_CLEAN: [a["cleaned"] for a in apps], m.TAB_CLASSIFY: [a["classified"] for a in apps],
+            m.TAB_FLAGS: [a["flags"] for a in apps], m.TAB_SCORE: [a["score"] for a in apps],
+            m.TAB_PACKAGE: pkg_rows,
+        }
+        for tab, rows in produced.items():
+            cols = {c.lower() for c in m.TAB_COLUMNS[tab]}
+            extra = sorted({k for r in rows for k in r if k.lower() not in cols})
+            check(rows and not extra, f"{tab}: TAB_COLUMNS cubre lo que se escribe", got=extra)
+
+        # step_write con la fila 1 que tenía producción el 13-nov (v2).
+        V2_SCORECARD = ["App_ID", "Timestamp", "Grantee_Name", "Project_Title", "Score_Mission_Alignment",
+                        "Mission_Alignment_Reason", "Total_Score", "Semaforo", "Dependency_Ratio", "Scoring_Notes"]
+        writes = []
+        m.validate_sheet_schema = lambda *a, **k: []
+        m.update_dashboard = lambda *a, **k: None
+        m.write_sheet = lambda *a, **k: None
+        m.atomic_batch_write = lambda api, sid, lst: (writes.append([t for t, _, _ in lst]) or (len(lst), []))
+        cfg = {"active": {"intake_sheet_id": "x"}, "active_env": "test"}
+        for f_ in tmp.glob("intake_watermark*"):
+            f_.unlink()
+        def headers(sheet):
+            return lambda api, sid, tab, range_str=None: [sheet.get(tab, m.TAB_COLUMNS.get(tab, ["App_ID"]))]
+        m.read_sheet = headers({m.TAB_SCORE: V2_SCORECARD})
+        with contextlib.redirect_stdout(io.StringIO()):
+            out = m.step_write(None, apps, pkg_rows, cfg, "RUN-V2", [], "manual", "test")
+        check(not writes, "con encabezados v2 en Scorecard no se escribe NINGUNA pestaña", got=writes)
+        check("missing_result_columns" in out["log"]["errors"] and "Score_Resilience_Fit" in out["log"]["errors"],
+              "y el log dice qué columnas faltan", got=out["log"]["errors"][:200])
+        check(m.load_watermark("test")["last_timestamp"] is None, "y el watermark no avanza")
+        m.read_sheet = headers({})
+        with contextlib.redirect_stdout(io.StringIO()):
+            out = m.step_write(None, apps, pkg_rows, cfg, "RUN-OK", [], "manual", "test")
+        check(writes and len(writes[0]) == 5, "con las columnas completas se escriben las cinco pestañas", got=writes)
+        check(m.load_watermark("test")["last_timestamp"] is not None, "y el watermark avanza")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

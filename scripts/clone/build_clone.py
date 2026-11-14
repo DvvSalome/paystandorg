@@ -122,6 +122,19 @@ html { scroll-behavior: smooth; }
    the stable wixui- class, not by comp-id: those are regenerated whenever the
    Wix page is republished. */
 .wixui-search-bar, [data-testid="search-box-container"] { display: none !important; }
+/* Fixed step bar for the embedded form (script at the end of the page). */
+#ga27-stepbar { position: fixed; top: 0; left: 0; right: 0; z-index: 9000; background: #fff; box-shadow: 0 2px 14px rgba(0, 27, 91, .14); font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #001B5B; }
+#ga27-stepbar[hidden] { display: none !important; }
+#ga27-stepbar .sb-in { max-width: 860px; margin: 0 auto; padding: 10px 20px 8px; box-sizing: border-box; }
+#ga27-stepbar .sb-now { margin: 0 0 6px; font-weight: 700; }
+#ga27-stepbar .sb-list { position: relative; list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: 6px; overflow-x: auto; }
+#ga27-stepbar .sb-list li { flex: 0 0 auto; }
+#ga27-stepbar .sb-step { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid #d6dde8; background: #fff; color: #001B5B; cursor: pointer; white-space: nowrap; }
+#ga27-stepbar .sb-step.cur { background: #001B5B; border-color: #001B5B; color: #fff; font-weight: 600; }
+#ga27-stepbar .sb-step.done { border-color: #1C6B3F; color: #1C6B3F; }
+#ga27-stepbar .sb-step.open { border-color: #c98a1a; color: #7a4d00; }
+#ga27-stepbar .sb-step:disabled { opacity: .45; cursor: not-allowed; }
+#ga27-stepbar .sb-step:focus-visible { outline: 3px solid #FF6A2F; outline-offset: 2px; }
 .xxr34-container { grid-template-rows: auto auto auto auto auto auto !important; }
 #comp-m06zws6u { grid-row: 6 / 7 !important; }
 #ga27-apply { grid-row: 5 / 6; grid-column: 1; pointer-events: auto; padding: 90px 20px 90px; box-sizing: border-box; }
@@ -150,9 +163,48 @@ BODY = '''<div id="ga27-menu" role="dialog" aria-modal="true" aria-label="Menu">
   if (/[?&]noform=1\\b/.test(q)) de.classList.add("noform");
   var f = document.getElementById("ga27-form");
   if (f && /[?&]demo=1\\b/.test(q)) f.src = "form/?embed=1&demo=1";
+  // Step bar for the embedded form. The form lives in an iframe that grows
+  // to its content and never scrolls itself, so nothing inside it can stay
+  // on screen while this page scrolls — on a long section the person lost
+  // track of where they were. The form sends its step state here; this page
+  // draws a fixed copy once the form's own bar has scrolled out of view, and
+  // sends back the section clicked. The form decides whether that section is
+  // reachable. Messages are accepted only from the form's own window.
+  var sb = document.createElement("nav");
+  sb.id = "ga27-stepbar"; sb.hidden = true;
+  sb.setAttribute("aria-label", "Application sections");
+  sb.innerHTML = '<div class="sb-in"><p class="sb-now"></p><ol class="sb-list"></ol></div>';
+  document.body.appendChild(sb);
+  var sbState = null;
+  function placeBar() {
+    if (!f || !sbState) { sb.hidden = true; return; }
+    var r = f.getBoundingClientRect();
+    sb.hidden = !(r.top + sbState.anchor < 0 && r.bottom > 160);
+  }
+  function drawBar() {
+    sb.querySelector(".sb-now").textContent = sbState.now || "";
+    var ol = sb.querySelector(".sb-list"); ol.textContent = "";
+    (sbState.steps || []).forEach(function (s) {
+      var li = document.createElement("li"), b = document.createElement("button");
+      b.type = "button"; b.className = "sb-step " + s.state; b.disabled = s.state === "locked";
+      b.textContent = s.label + (s.state === "cur" ? " · " + s.title : "") + (s.state === "done" ? " ✓" : "");
+      b.title = s.title;
+      b.setAttribute("aria-label", s.title + (s.state === "done" ? ", complete" : s.state === "open" ? ", has open questions" : s.state === "locked" ? ", not reached yet" : ""));
+      if (s.state === "cur") b.setAttribute("aria-current", "step");
+      b.addEventListener("click", function () { f.contentWindow.postMessage({ type: "ga27-goto", id: s.id }, location.origin); });
+      li.appendChild(b); ol.appendChild(li);
+    });
+    var c = ol.querySelector(".sb-step.cur");
+    if (c) ol.scrollLeft = c.offsetLeft - (ol.clientWidth - c.offsetWidth) / 2;
+    placeBar();
+  }
   window.addEventListener("message", function (e) {
-    if (e.origin === location.origin && e.data && e.data.type === "ga27-height" && f) f.style.height = Math.ceil(e.data.height) + "px";
+    if (e.origin !== location.origin || !e.data || !f || e.source !== f.contentWindow) return;
+    if (e.data.type === "ga27-height") f.style.height = Math.ceil(e.data.height) + "px";
+    if (e.data.type === "ga27-steps") { sbState = e.data; drawBar(); }
   });
+  window.addEventListener("scroll", placeBar, { passive: true });
+  window.addEventListener("resize", placeBar);
   var menu = document.getElementById("ga27-menu"), burger = document.getElementById("comp-m06zws4g_r_comp-kkmqi5lg");
   function set(open) { menu.setAttribute("data-open", open ? "1" : "0"); document.body.style.overflow = open ? "hidden" : ""; }
   if (burger) burger.addEventListener("click", function () { set(true); });

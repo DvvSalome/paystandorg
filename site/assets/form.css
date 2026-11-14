@@ -112,6 +112,35 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
 /* "Still needed: …" under a question answered only in part */
 .partnote { margin: 8px 0 0; font-size: .9rem; color: #7a2412; }
+
+/* ---- one section at a time ---- */
+/* scroll-margin: on its own page the progress bar is sticky on top and would
+   cover the step bar after "Next" scrolls to it. Embedded, it is static. */
+.stepper { margin: 0 0 18px; scroll-margin-top: 90px; }
+html.embed .stepper { scroll-margin-top: 16px; }
+.step-now { margin: 0 0 8px; font-weight: 600; }
+.step-list { position: relative; list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.step-list li { flex: 0 0 auto; }
+button.step {
+  font: inherit; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px; border: 1px solid var(--ps-border); background: #fff;
+  color: var(--ps-text, #1b2430); cursor: pointer; white-space: nowrap;
+}
+button.step .step-id { font-weight: 700; }
+button.step .step-title { display: none; }
+button.step.cur { background: var(--ps-btn); border-color: var(--ps-btn); color: #fff; }
+button.step.cur .step-title { display: inline; }
+button.step.done { border-color: var(--ps-ok); color: var(--ps-ok); }
+button.step.open { border-color: #c98a1a; color: #7a4d00; }
+button.step.locked { opacity: .45; cursor: not-allowed; }
+button.step:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
+.step-mark { font-weight: 700; }
+@media (min-width: 900px) { button.step .step-title { display: inline; } }
+
+.secnav { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 18px; }
+.secnav .navmsg { flex: 1 1 200px; font-size: .92rem; }
+.secnav .navmsg.bad { color: #7a2412; font-weight: 600; }
+.secnav button.primary { margin-left: auto; }
 input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }

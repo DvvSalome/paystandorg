@@ -120,6 +120,35 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
 /* "Still needed: …" under a question answered only in part */
 .partnote { margin: 8px 0 0; font-size: .9rem; color: #7a2412; }
+
+/* ---- one section at a time ---- */
+/* scroll-margin: on its own page the progress bar is sticky on top and would
+   cover the step bar after "Next" scrolls to it. Embedded, it is static. */
+.stepper { margin: 0 0 18px; scroll-margin-top: 90px; }
+html.embed .stepper { scroll-margin-top: 16px; }
+.step-now { margin: 0 0 8px; font-weight: 600; }
+.step-list { position: relative; list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.step-list li { flex: 0 0 auto; }
+button.step {
+  font: inherit; font-size: .85rem; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px; border: 1px solid var(--ps-border); background: #fff;
+  color: var(--ps-text, #1b2430); cursor: pointer; white-space: nowrap;
+}
+button.step .step-id { font-weight: 700; }
+button.step .step-title { display: none; }
+button.step.cur { background: var(--ps-btn); border-color: var(--ps-btn); color: #fff; }
+button.step.cur .step-title { display: inline; }
+button.step.done { border-color: var(--ps-ok); color: var(--ps-ok); }
+button.step.open { border-color: #c98a1a; color: #7a4d00; }
+button.step.locked { opacity: .45; cursor: not-allowed; }
+button.step:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
+.step-mark { font-weight: 700; }
+@media (min-width: 900px) { button.step .step-title { display: inline; } }
+
+.secnav { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 18px; }
+.secnav .navmsg { flex: 1 1 200px; font-size: .92rem; }
+.secnav .navmsg.bad { color: #7a2412; font-weight: 600; }
+.secnav button.primary { margin-left: auto; }
 input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }
@@ -684,6 +713,7 @@ window.GA27_CONFIG = {
   var secProg = {};
   var MULTIPART = { composite: 1, titlesummary: 1, datepair: 1, valuedate: 1, baseline: 1,
                     milestones: 1, funders: 1, safeguard: 1 };
+  var navUI = {};          // section id -> { back, next, msg }
   var partNotes = {};      // question id -> the "Still needed: …" note under it
   var touched = {};        // question id -> focus has left it at least once        // section id -> el progreso de su encabezado
   var busySaving = false;
@@ -796,6 +826,7 @@ window.GA27_CONFIG = {
       box.appendChild(buildField(f));
     });
     box.appendChild(sectionFooter(sec));
+    box.appendChild(sectionNav(sec));
     form.appendChild(box);
   });
 
@@ -829,6 +860,13 @@ window.GA27_CONFIG = {
   form.insertBefore(savebar.root, form.firstChild);
   var saveCard = buildSaveCard();
   var codeCard = buildCodeCard();
+  var stepper = buildStepper();
+  // On its own page the progress block is sticky at the top; the step bar
+  // goes inside it so it stays on screen through a long section. Embedded,
+  // the progress block is static and the parent page draws a fixed copy.
+  var progressBox = document.querySelector(".progress");
+  if (progressBox && window.parent === window) progressBox.appendChild(stepper.root);
+  else form.insertBefore(stepper.root, savebar.root.nextSibling);
   savebar.email = saveCard.email;
 
   function buildField(f) {
@@ -1382,7 +1420,9 @@ window.GA27_CONFIG = {
       var openHere = missingIds().filter(function (id) {
         return mine.some(function (f) { return f.id === id; });
       }).length;
-      node.textContent = "Section " + s2.id + " of " + SECTIONS.length +
+      var list = steps(), pos = list.indexOf(s2) + 1;
+      if (!pos) { node.textContent = ""; return; }
+      node.textContent = "Step " + pos + " of " + list.length +
         "  ·  " + done + " of " + reqVis.length + " required answered overall" +
         (mine.length ? (openHere ? "  ·  " + openHere + " still open here"
                                  : "  ·  this section is complete") : "");
@@ -1390,6 +1430,26 @@ window.GA27_CONFIG = {
     });
 
     syncSaveEmail();
+    if (stepper && step.cur) {
+      // A3 can make J appear or disappear; keep the current step valid.
+      if (!steps().some(function (s2) { return s2.id === step.cur; })) showStep(step.cur, { scroll: false });
+      else { renderStepper(); renderNav(); }
+      // A question marked on Next loses its mark the moment it is complete.
+      var missNow = missingIds(), probsNow = problems();
+      Array.prototype.forEach.call(form.querySelectorAll(".f.error"), function (n) {
+        var fid = n.dataset.fid;
+        if (missNow.indexOf(fid) === -1 && !probsNow[fid]) unmark(fid);
+      });
+      // ...and the count under the section follows: it shrinks as questions
+      // are completed and disappears at zero, never stays stale.
+      var nu = navUI[step.cur];
+      if (nu && /\bbad\b/.test(nu.msg.className)) {
+        var left = openIn(step.cur).length;
+        navSay(step.cur, left ? "bad" : "", !left ? "" : left === 1
+          ? "One question in this section needs your attention."
+          : left + " questions in this section need your attention.");
+      }
+    }
     // Live note under a multi-part question once the person has left it
     // half-answered: "Still needed: phone; title." It clears itself as soon
     // as the last part is filled.
@@ -1402,6 +1462,211 @@ window.GA27_CONFIG = {
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
+
+  /* ---------- one section at a time ----------
+     The form shows one section per screen, with a step bar on top.
+
+       Next     moves on only when the section is complete — every required
+                question answered, every part of a multi-part question
+                filled (missingParts), and no format problem. Otherwise it
+                marks each open question with what is missing and goes to
+                the first. If a code already exists, it also saves.
+       Back     always works.
+       Step bar jumps to any section already reached, never ahead of it.
+
+     A section with no visible question is not a step: J (renewal) exists
+     only when A3 is "Yes, in 2026", and appears or disappears with A3.
+     Submit lives on the last step; if it finds a problem in an earlier
+     section, it opens that section. Resuming a draft lands on the first
+     section with something open. */
+  var step = { cur: null, reached: 0 };       // reached = furthest SECTIONS index visited
+
+  function steps() {
+    return SECTIONS.filter(function (s) {
+      return F.some(function (f) { return f.s === s.id && visible(f); });
+    });
+  }
+  function secIndex(id) { for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].id === id) return i; return -1; }
+  // Open questions of one section: missing, incomplete, or with a format problem.
+  function openIn(id) {
+    var miss = missingIds(), probs = problems();
+    return F.filter(function (f) {
+      return f.s === id && visible(f) && (miss.indexOf(f.id) !== -1 || !!probs[f.id]);
+    });
+  }
+  function startedIn(id) {
+    return F.some(function (f) {
+      var v = V[f.id];
+      return f.s === id && visible(f) && v && (typeof v !== "string" || v.trim());
+    });
+  }
+
+  function buildStepper() {
+    var root = el("nav", "stepper");
+    root.setAttribute("aria-label", "Application sections");
+    var now = el("p", "step-now");
+    var ol = el("ol", "step-list");
+    root.appendChild(now); root.appendChild(ol);
+    return { root: root, now: now, list: ol };
+  }
+  function renderStepper() {
+    var list = steps(), cur = step.cur;
+    stepper.list.textContent = "";
+    list.forEach(function (s, i) {
+      var li = el("li");
+      var b = el("button", "step"); b.type = "button"; b.dataset.sid = s.id;
+      var open = openIn(s.id).length, started = startedIn(s.id);
+      var reachable = secIndex(s.id) <= step.reached;
+      var state = s.id === cur ? "cur" : !reachable ? "locked" : !open ? "done" : started ? "open" : "todo";
+      b.className = "step " + state;
+      b.disabled = state === "locked";
+      b.appendChild(el("span", "step-id", s.id === "0" ? "Start" : s.id));
+      b.appendChild(el("span", "step-title", s.title));
+      if (state === "done") b.appendChild(el("span", "step-mark", "✓"));
+      b.setAttribute("aria-label", "Step " + (i + 1) + ": " + s.title +
+        (state === "done" ? ", complete" : state === "open" ? ", " + open + " still open" :
+         state === "locked" ? ", not reached yet" : ""));
+      if (state === "cur") b.setAttribute("aria-current", "step");
+      b.addEventListener("click", function () { if (!b.disabled) showStep(s.id); });
+      li.appendChild(b); stepper.list.appendChild(li);
+    });
+    // On a narrow screen the list scrolls sideways; keep the current step in view.
+    var curBtn = stepper.list.querySelector("button.step.cur");
+    if (curBtn) stepper.list.scrollLeft = curBtn.offsetLeft - (stepper.list.clientWidth - curBtn.offsetWidth) / 2;
+    var pos = 0; list.forEach(function (s, i) { if (s.id === cur) pos = i + 1; });
+    var curSec = SECTIONS[secIndex(cur)];
+    stepper.now.textContent = curSec ? "Step " + pos + " of " + list.length + " · " + curSec.title : "";
+    publishSteps(list);
+  }
+
+  // Embedded in paystand.org, the form sits in an iframe without its own
+  // scroll, so nothing inside it can stay on screen while the page scrolls.
+  // The parent page draws the step bar instead: it gets the state from here
+  // and sends back the section the person clicks. Same origin only.
+  var EMBEDDED = window.parent !== window;
+  function publishSteps(list) {
+    if (!EMBEDDED) return;
+    var r = stepper.root.getBoundingClientRect();
+    window.parent.postMessage({
+      type: "ga27-steps",
+      now: stepper.now.textContent,
+      anchor: Math.round(r.bottom + window.scrollY),     // where the in-form bar ends
+      steps: list.map(function (s) {
+        var b = null;
+        Array.prototype.forEach.call(stepper.list.querySelectorAll("button.step"), function (x) {
+          if (x.dataset.sid === s.id) b = x;
+        });
+        return { id: s.id, label: s.id === "0" ? "Start" : s.id, title: s.title,
+                 state: b ? b.className.replace("step ", "") : "todo" };
+      })
+    }, location.origin);
+  }
+  if (EMBEDDED) window.addEventListener("message", function (e) {
+    if (e.origin !== location.origin || e.source !== window.parent || !e.data) return;
+    if (e.data.type === "ga27-goto") {
+      var id = String(e.data.id || "");
+      var ok = steps().some(function (x) { return x.id === id; }) && secIndex(id) <= step.reached;
+      if (ok) showStep(id);
+    }
+  });
+
+  function sectionNav(sec) {
+    var row = el("div", "secnav");
+    var back = el("button", "savebtn", "← Back"); back.type = "button";
+    var msg = el("span", "navmsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
+    var next = el("button", "savebtn primary", "Next"); next.type = "button";
+    row.appendChild(back); row.appendChild(msg); row.appendChild(next);
+    back.addEventListener("click", function () { goBy(-1); });
+    next.addEventListener("click", goNext);
+    navUI[sec.id] = { back: back, next: next, msg: msg };
+    return row;
+  }
+  function navSay(id, kind, text) {
+    var ui = navUI[id]; if (!ui) return;
+    ui.msg.className = "navmsg" + (kind ? " " + kind : "");
+    ui.msg.textContent = text || "";
+  }
+  function renderNav() {
+    var list = steps(), i = -1;
+    list.forEach(function (s, k) { if (s.id === step.cur) i = k; });
+    var ui = navUI[step.cur]; if (!ui || i < 0) return;
+    ui.back.hidden = i === 0;
+    var nxt = list[i + 1];
+    ui.next.hidden = !nxt;
+    if (nxt) ui.next.textContent = "Next: " + nxt.title + " →";
+  }
+
+  function showStep(id, opts) {
+    var list = steps();
+    if (!list.some(function (s) { return s.id === id; })) {
+      // The section is not a step (any more): go to the nearest one before it.
+      var k = secIndex(id), pick = list[0];
+      list.forEach(function (s) { if (secIndex(s.id) <= k) pick = s; });
+      id = pick.id;
+    }
+    step.cur = id;
+    step.reached = Math.max(step.reached, secIndex(id));
+    SECTIONS.forEach(function (s) {
+      var box = document.getElementById("sec-" + s.id);
+      if (box) box.hidden = s.id !== id;
+    });
+    bar.hidden = id !== list[list.length - 1].id;      // Submit only on the last step
+    renderStepper(); renderNav();
+    if (window.GA27_reportHeight) window.GA27_reportHeight();
+    if (!opts || opts.scroll !== false) {
+      // scrollIntoView reaches the parent page too, so this works inside the
+      // auto-height iframe where the form is embedded.
+      if (EMBEDDED) stepper.root.scrollIntoView({ behavior: "smooth", block: "start" });
+      else {
+        // The step bar is sticky here; land the section just below it.
+        var box2 = document.getElementById("sec-" + id);
+        var over = progressBox ? progressBox.getBoundingClientRect().height : 0;
+        window.scrollTo({ top: box2.getBoundingClientRect().top + window.scrollY - over - 12, behavior: "smooth" });
+      }
+      var h = document.querySelector("#sec-" + id + " h3");
+      if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+    }
+  }
+  function goBy(d) {
+    var list = steps(), i = 0;
+    list.forEach(function (s, k) { if (s.id === step.cur) i = k; });
+    var t = list[Math.max(0, Math.min(list.length - 1, i + d))];
+    navSay(step.cur, "", "");
+    showStep(t.id);
+  }
+  function goNext() {
+    var open = openIn(step.cur), probs = problems(), miss = missingIds();
+    // clear this section's old marks, then mark what is open now
+    open.concat(F.filter(function (f) { return f.s === step.cur; })).forEach(function (f) { unmark(f.id); });
+    if (open.length) {
+      open.forEach(function (f) {
+        touched[f.id] = true;
+        mark(f.id, miss.indexOf(f.id) !== -1 ? missingMessage(f) : probs[f.id]);
+      });
+      refresh();
+      navSay(step.cur, "bad", open.length === 1
+        ? "One question in this section needs your attention."
+        : open.length + " questions in this section need your attention.");
+      document.getElementById("f-" + open[0].id).scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    navSay(step.cur, "", "");
+    // Saving on the way: only once a code exists, so moving on never stops
+    // to ask for an email.
+    if (draftCode && CFG.endpoint && !busySaving) saveDraft(step.cur);
+    goBy(1);
+  }
+  function resumeAtFirstOpen() {
+    var list = steps(), target = list[list.length - 1];
+    for (var i = 0; i < list.length; i++) if (openIn(list[i].id).length) { target = list[i]; break; }
+    step.reached = Math.max(step.reached, secIndex(target.id));
+    showStep(target.id);
+  }
+  function unmark(id) {
+    var n = document.getElementById("f-" + id); if (!n) return;
+    n.classList.remove("error");
+    var m = n.querySelector(".errmsg.js"); if (m) m.remove();
+  }
 
   /* ---------- save and resume ---------- */
 
@@ -1758,7 +2023,7 @@ window.GA27_CONFIG = {
         updateSaveUI();
         rememberedCode = "";
         say("ok", "Your saved answers are back. Attach your files again before submitting.");
-        savebar.root.scrollIntoView({ behavior: "smooth", block: "start" });
+        resumeAtFirstOpen();
       })
       .catch(function (err) { say("bad", err.message); });
   }
@@ -1845,7 +2110,12 @@ window.GA27_CONFIG = {
     Object.keys(probs).forEach(function (id) { if (miss.indexOf(id) === -1) mark(id, probs[id]); });
     var bad = F.filter(function (f) { return miss.indexOf(f.id) !== -1 || probs[f.id]; });
     if (bad.length) {
-      setStatus("bad", bad.length + " question" + (bad.length === 1 ? " needs" : "s need") + " your attention. The first one is " + bad[0].id + ".");
+      var where = bad[0].s, txt = bad.length + " question" + (bad.length === 1 ? " needs" : "s need") +
+        " your attention. The first one is " + bad[0].id + ".";
+      setStatus("bad", txt);
+      // The first problem may be in an earlier section; open it, say so
+      // there, and take the person to the question.
+      if (where !== step.cur) { showStep(where, { scroll: false }); navSay(where, "bad", txt); }
       document.getElementById("f-" + bad[0].id).scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -1891,6 +2161,7 @@ window.GA27_CONFIG = {
   } catch (e) {}
   renderDoor();
   refresh();
+  showStep(steps()[0].id, { scroll: false });
 })();
 
 </script>
@@ -1898,8 +2169,23 @@ window.GA27_CONFIG = {
   /* If this page is shown inside an iframe (Wix), tell the parent its height so it never scrolls inside. */
   (function () {
     if (window.parent === window) return;
-    function send() { window.parent.postMessage({ type: "ga27-height", height: document.documentElement.scrollHeight }, "*"); }
+    // Measure the content, not documentElement.scrollHeight: that one never
+    // drops below the iframe's current height, so with one section per
+    // screen the frame could grow but never shrink — a short section after
+    // a long one left hundreds of pixels of blank space.
+    function height() {
+      var b = document.body, cs = getComputedStyle(b);
+      return Math.ceil(b.getBoundingClientRect().height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
+    }
+    var last = 0;
+    function send() {
+      var h = height(); if (h === last) return; last = h;
+      window.parent.postMessage({ type: "ga27-height", height: h }, location.origin);
+    }
     new ResizeObserver(send).observe(document.body); window.addEventListener("load", send);
+    // form.js calls this after switching sections, so the frame follows even
+    // where ResizeObserver is throttled (background tabs).
+    window.GA27_reportHeight = send;
   })();
 </script>
 </body>

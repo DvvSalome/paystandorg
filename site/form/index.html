@@ -74,8 +74,23 @@
   /* If this page is shown inside an iframe (Wix), tell the parent its height so it never scrolls inside. */
   (function () {
     if (window.parent === window) return;
-    function send() { window.parent.postMessage({ type: "ga27-height", height: document.documentElement.scrollHeight }, "*"); }
+    // Measure the content, not documentElement.scrollHeight: that one never
+    // drops below the iframe's current height, so with one section per
+    // screen the frame could grow but never shrink — a short section after
+    // a long one left hundreds of pixels of blank space.
+    function height() {
+      var b = document.body, cs = getComputedStyle(b);
+      return Math.ceil(b.getBoundingClientRect().height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom));
+    }
+    var last = 0;
+    function send() {
+      var h = height(); if (h === last) return; last = h;
+      window.parent.postMessage({ type: "ga27-height", height: h }, location.origin);
+    }
     new ResizeObserver(send).observe(document.body); window.addEventListener("load", send);
+    // form.js calls this after switching sections, so the frame follows even
+    // where ResizeObserver is throttled (background tabs).
+    window.GA27_reportHeight = send;
   })();
   /* ?demo=1 fills the form with fictitious data (design review only). */
   if (/[?&]demo=1\b/.test(location.search)) {

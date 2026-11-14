@@ -982,6 +982,27 @@ def drive_file_url(file_id, google_doc=False):
     return f"https://drive.google.com/file/d/{file_id}/view"
 
 
+def applicant_folder_root(config):
+    """
+    Where applicant folders go for the active environment.
+
+    Production: the real "Grant Application 2027" (top-level
+    grant_application_2027_folder). Test: only a folder configured for test
+    (config["test"]["grant_application_2027_folder"]). A test run never falls
+    back to the real folder: until 2026-11-13 both environments shared it, and
+    the 2 Nov rehearsal left four junk grantee folders in the real Drive.
+    Returns None when nothing is configured, which ensure_grantee_folder
+    reports and step_flag turns into documents_not_stored.
+    """
+    env = config.get("active_env")
+    own = ((config.get("active") or {}).get("grant_application_2027_folder") or {}).get("id")
+    if own:
+        return own
+    if env == "production":
+        return (config.get("grant_application_2027_folder") or {}).get("id")
+    return None
+
+
 def ensure_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_id):
     """
     The organization's folder for this year, created if missing.
@@ -991,7 +1012,8 @@ def ensure_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_i
     if not drive_service:
         return None, "no Drive connection"
     if not parent_folder_id:
-        return None, "grant_application_2027_folder not configured"
+        return None, ("no applicant folder configured for this environment "
+                      "(test needs its own grant_application_2027_folder)")
     if not grantee_id or not (legal_name or "").strip():
         return None, "no grantee ID or legal name"
     folder_name = f"{grantee_id} - {legal_name.strip()}"
@@ -2419,8 +2441,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
         if key:
             seg_by_name[key] = s
 
-    # Get 2027 folder ID from config
-    folder_2027_id = config.get("grant_application_2027_folder", {}).get("id")
+    folder_2027_id = applicant_folder_root(config)
     supabase_cfg = (config.get("ingest") or {}).get("supabase", {})
     question_labels = load_question_labels()
 

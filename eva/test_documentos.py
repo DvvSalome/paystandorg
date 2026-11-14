@@ -170,10 +170,25 @@ def setup(m, tmp, drive_ref):
 
 
 def ingest(m, drive):
-    cfg = {"active": {"intake_sheet_id": "TEST-SHEET"}, "active_env": "test",
-           "grant_application_2027_folder": {"id": GA2027},
+    cfg = {"active": {"intake_sheet_id": "TEST-SHEET",
+                      "grant_application_2027_folder": {"id": GA2027}},
+           "active_env": "test",
+           "grant_application_2027_folder": {"id": "REAL-GA2027-NEVER-IN-TEST"},
            "ingest": {"source": "supabase", "supabase": {"url": "https://x", "table": "intake_rows"}}}
     return m.step_ingest(None, drive, cfg, {}, "RUN-DOCS")["applications"]
+
+
+def test_environments(m):
+    print("\n7. Test nunca escribe en el Drive real")
+    real = {"id": "REAL-GA2027"}
+    base = {"grant_application_2027_folder": real}
+    prod = dict(base, active_env="production", active={})
+    test_no = dict(base, active_env="test", active={})
+    test_own = dict(base, active_env="test", active={"grant_application_2027_folder": {"id": "TEST-FOLDER"}})
+    check(m.applicant_folder_root(prod) == "REAL-GA2027", "producción usa Grant Application 2027")
+    check(m.applicant_folder_root(test_no) is None,
+          "test sin carpeta propia: no escribe en Drive (antes usaba la real)")
+    check(m.applicant_folder_root(test_own) == "TEST-FOLDER", "test con carpeta propia: usa esa")
 
 
 def main():
@@ -265,6 +280,9 @@ def main():
         ingest(m, drive)
         check(len(drive.creates) == before, "segunda corrida: cero archivos o carpetas nuevos",
               [it[f]["name"] for f in drive.creates[before:]])
+        check(not any("REAL-GA2027-NEVER-IN-TEST" in it[f]["parents"] for f in drive.creates),
+              "una corrida de test no toca la carpeta real")
+        test_environments(m)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

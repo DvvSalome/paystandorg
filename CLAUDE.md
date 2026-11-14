@@ -26,5 +26,6 @@ Form (Vercel) → Edge Function `intake` → Supabase (`applications`, `applicat
 
 ## Details
 - Current status and what is pending: `docs/status.md`
+- Eva in one page (what she does, what is done, what is pending): `docs/eva-resumen.md`
 - Integration with Eva, decisions and open questions: `docs/eva-integration.md`
 - Supabase setup: `docs/supabase-setup.md`. Submission API contract: `docs/submission-api.md`. Brand palette: `docs/brand.md`.

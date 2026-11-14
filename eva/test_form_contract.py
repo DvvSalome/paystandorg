@@ -158,10 +158,35 @@ QUESTION_MAP = P["QUESTION_MAP"]
 with open(HERE / "data" / "scorecard_config.json") as fh:
     CFG = json.load(fh)
 
-# step_score escribe scored.json en el directorio de la corrida. Lo creamos
-# para que la prueba ejercite el camino real de escritura en vez de un atajo.
+# step_score escribe scored.json en el directorio de la corrida, y la prueba
+# ejercita ese camino real de escritura. Pero NO en el cache de Eva: hasta el
+# 2026-11-13 RUNS_DIR apuntaba al real, así que cada corrida de esta prueba en
+# el servidor dejaba cache/intake_runs/contract-test/ junto a las corridas de
+# producción. Las funciones extraídas leen RUNS_DIR de este namespace, así
+# que basta con redirigirlo a un directorio temporal que se borra al salir.
+import atexit as _atexit
+import shutil as _shutil
+import tempfile as _tempfile
+
+REAL_RUNS_DIR = P["RUNS_DIR"]
+_TMP = Path(_tempfile.mkdtemp(prefix="contract-test-"))
+_atexit.register(_shutil.rmtree, _TMP, True)
+P["RUNS_DIR"] = _TMP / "intake_runs"
+if "CACHE_DIR" in P:
+    P["CACHE_DIR"] = _TMP
 RUN_ID = "contract-test"
 (P["RUNS_DIR"] / RUN_ID).mkdir(parents=True, exist_ok=True)
+
+
+def _snapshot(d):
+    """Nombres y fechas de lo que hay en el cache real, para ver si cambió."""
+    if not d.exists():
+        return None
+    return sorted((str(f.relative_to(d)), f.stat().st_mtime_ns)
+                  for f in d.rglob("*"))
+
+
+_REAL_BEFORE = _snapshot(REAL_RUNS_DIR)
 
 
 # ── Marco de aserción ─────────────────────────────────────────────────────
@@ -649,6 +674,14 @@ def main():
     structural_checks()
     for name in ([args.case] if args.case else list(CASES)):
         run_case(name, CASES[name])
+
+    print("\n── Aislamiento del cache ──")
+    check((P["RUNS_DIR"] / RUN_ID / "scored.json").exists(),
+          "step_score escribió su salida en el directorio temporal",
+          got=str(P["RUNS_DIR"]), want="scored.json ahí")
+    check(_snapshot(REAL_RUNS_DIR) == _REAL_BEFORE,
+          "el cache real de Eva (cache/intake_runs) quedó intacto",
+          got=str(REAL_RUNS_DIR), want="sin archivos nuevos ni modificados")
 
     print("\n" + "=" * 60)
     if FAILURES:

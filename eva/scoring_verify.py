@@ -949,10 +949,17 @@ def run_fixtures():
 #  real-data runners
 # ══════════════════════════════════════════════════════════════════════════
 
+# A real run directory is named by generate_run_id: YYYYMMDD-HHMMSS. Test
+# suites have left other names here (contract-test, regression-test), and
+# those sort AFTER every date, so "the latest run" used to be a test folder.
+_RUN_DIR_RE = re.compile(r"^\d{8}-\d{6}$")
+
+
 def latest_run():
     if not RUNS_DIR.exists():
         return None
-    runs = sorted(p for p in RUNS_DIR.iterdir() if p.is_dir())
+    runs = sorted(p for p in RUNS_DIR.iterdir()
+                  if p.is_dir() and _RUN_DIR_RE.match(p.name))
     return runs[-1] if runs else None
 
 

@@ -19,31 +19,61 @@ Buscando esto encontré que la tubería está construida y solo le falta el
 
 ## Los dos huecos
 
-### 1. D1 está en la sección D, la quinta
+### 1. El correo llega tarde
 
-El código se emite en el primer guardado, y el primer botón de guardar está
-al final de la sección 0. Para entonces `V.D1__email` está vacío, así que
-`saveDraft` recibe `email: null` y no hay a dónde enviar nada.
+El código se emite en el primer guardado, y el botón "Save and get my code"
+es lo primero en pantalla: `form.js:75` inserta la barra de guardado como
+primer hijo del formulario. Alguien puede pulsarlo antes de tocar la sección
+0. Pero el correo vive en D1, en la sección D, la quinta. Hasta llegar ahí
+`V.D1__email` está vacío, `saveDraft` recibe `email: null` y no hay a dónde
+enviar nada.
 
-**Propuesta: mover D1 a la sección 0**, después de las listas de
-verificación. Es cambiar una propiedad — `s: "D"` por `s: "0"` — y no toca
-nada más:
+**Decisión (Iván, 2026-11-13): el correo se pide primero, en la barra de
+guardado, y vive también en D1.**
 
-- `QUESTION_MAP` sigue mapeando `D1 -> D1_Primary_Contact`. La sección es
-  presentacional; no entra en el mapa.
-- La vista `intake_rows` se genera del `QUESTION_MAP`, así que no cambia.
-- El pipeline de Eva sigue leyendo `D1` igual, incluida su validación
-  `nonsense_invalid_email:D1`.
-- Las 60 preguntas siguen siendo 60.
+> **¿A dónde te enviamos tu código?** [correo]  [Save and get my code]
 
-La sección D queda con D2, D3 y D4 — autorización, firmante y copia — que
-siguen siendo coherentes juntas como "quién firma".
+Junto al botón que genera el código, no en la sección 0: si estuviera en la
+sección 0, quien guarda desde la barra de arriba seguiría llegando sin correo.
 
-**Por qué no una pregunta nueva arriba.** Sería preguntar el correo dos
-veces: el texto de ayuda de D1 ya dice *"We will use this email for all
-correspondence about your application"*, así que es el mismo dato. Es
-exactamente el problema que Iván señaló con A4 y G2 — dos fuentes para una
-cosa — y no conviene repetirlo aquí.
+#### Un solo valor, dos lugares
+
+El campo de arriba y la parte de correo de D1 son **dos vistas del mismo
+`V.D1__email`**. Editar cualquiera de los dos cambia ambos. No pueden
+divergir.
+
+Esto es lo que lo separa del problema de A4/G2, y por eso importa hacerlo
+así y no de otra forma:
+
+| | Cómo funciona | Resultado |
+|---|---|---|
+| **Atado (este)** | Los dos campos leen y escriben `V.D1__email`. | Un dato, dos vistas. No hace falta reconciliar nada. |
+| Pre-llenado (no) | D1 copia el de arriba y después queda independiente — el patrón actual de G2. | Divergen, y harían falta banderas de incoherencia como las de A4/G2. |
+
+Nombre, cargo y teléfono se quedan en D1, en la sección D, donde tienen
+contexto. Solo el correo se adelanta, porque es lo único que el guardado
+necesita.
+
+Para el resto del sistema no cambia nada: `QUESTION_MAP`, la vista
+`intake_rows` y el pipeline de Eva —incluida su validación
+`nonsense_invalid_email:D1`— siguen leyendo D1 igual. Las preguntas siguen
+siendo 60.
+
+#### Tres reglas que hay que respetar
+
+- **Arriba es opcional para guardar; en D1 es obligatorio para enviar.**
+  Quien guarde sin correo puede hacerlo y recibe el aviso de que el código no
+  se recupera (texto más abajo). D1 sigue siendo obligatorio, así que nadie
+  envía la solicitud sin correo.
+- **Cambiar el correo después de recibir el código** no obliga a reenviarlo:
+  el código anterior sigue valiendo. Los correos siguientes van a la
+  dirección nueva.
+- **Restaurar el borrador tiene que llenar los dos campos.** `snapshot()`
+  guarda valores por control (`form.js:672`). El campo de arriba no debe
+  guardarse como control propio: tiene que leer y escribir `V.D1__email`, y
+  `restore()` repintarlo desde ahí. Si se guardan por separado, al restaurar
+  uno de los dos puede quedar vacío —o peor, con un valor distinto— y ya hay
+  dos datos otra vez.
 
 ### 2. Nadie envía el correo
 
@@ -83,9 +113,8 @@ De ahí tres cosas concretas:
 
 ## Y lo que hay que decirle a quien no deja correo
 
-El campo de correo de D1 es parte de una pregunta obligatoria, pero alguien
-puede guardar antes de llenarla si movemos D1 y aún así la deja en blanco.
-En ese caso el código **solo existe en pantalla**, y hoy el aviso dice
+El correo de arriba es opcional para guardar, así que alguien puede pedir su
+código sin dejarlo. En ese caso el código **solo existe en pantalla**, y hoy el aviso dice
 *"Keep it somewhere safe"* sin explicar que no hay recuperación.
 
 Propuesta de texto, cuando no hay correo:
@@ -104,11 +133,14 @@ existe para resolver.
 
 ## Resumen de lo que cambia
 
-1. `questions.js`: `D1` pasa de `s: "D"` a `s: "0"`. Correr después
-   `scripts/sync-questions.sh` y `python3 scripts/build-function-single.py`
-   (`node tests/questions.test.mjs` falla si se olvida).
-2. `drafts.js`: enviar el correo en la rama de creación, sin que su fallo
-   afecte el guardado, con límite por dirección.
+1. `form.js`: un campo de correo en la barra de guardado, atado a
+   `V.D1__email` en las dos direcciones —el de arriba y la parte de correo de
+   D1 son el mismo valor—. `snapshot()` no lo guarda aparte y `restore()`
+   repinta los dos.
+2. `drafts.js`: enviar el correo en la rama de creación (`store.insert`), sin
+   que su fallo afecte el guardado, con límite por dirección.
 3. `form.js`: el texto del aviso según haya correo o no.
 4. Elegir proveedor de correo y guardar su llave donde van los secretos
    —nunca en el repo ni en `config.js`.
+
+`questions.js` no cambia: D1 sigue en la sección D con sus cuatro partes.

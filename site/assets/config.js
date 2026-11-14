@@ -7,5 +7,9 @@ window.GA27_CONFIG = {
   supabaseKey: "sb_publishable_aqZUk3Y2j3aGq3_Eh2o9XQ_50QfQnGf",
   // Cloudflare Turnstile site key (public). Empty = no captcha widget.
   turnstileSiteKey: "",
-  maxFileMB: 10
+  maxFileMB: 10,
+  // true once the server emails the draft code (docs/email-the-code.md).
+  // While false the form never claims it sent anything: it tells people to
+  // write the code down, because a lost code cannot be recovered.
+  emailCodes: false
 };

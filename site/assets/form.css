@@ -72,6 +72,11 @@ button.savebtn:focus-visible { outline: 3px solid var(--ps-blue); outline-offset
 .coderow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .codeval { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.1rem; letter-spacing: .04em; user-select: all; }
 .codenote { flex-basis: 100%; font-size: .9rem; opacity: .8; }
+/* Email for the code, next to the save button. Bound to D1's email part. */
+.mailrow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.mailrow label { font-weight: 600; }
+.mailrow input { flex: 1 1 240px; max-width: 360px; }
+.mailhint { flex-basis: 100%; font-size: .86rem; opacity: .8; }
 .resumerow { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; }
 .resumerow label { flex-basis: 100%; font-size: .95rem; }
 .resumerow input { font: inherit; padding: 9px 12px; border: 1px solid var(--ps-border); border-radius: 6px; min-width: 0; width: 15em; max-width: 100%; text-transform: uppercase; }

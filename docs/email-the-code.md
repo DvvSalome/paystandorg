@@ -2,6 +2,27 @@
 
 Para Salomé. Estado al 2026-11-13.
 
+## Estado
+
+**Hecho en el formulario (2026-11-13):** el campo de correo en la barra de
+guardado, atado a la parte de correo de D1 en las dos direcciones; el aviso
+honesto según haya correo o no; y la bandera `emailCodes` en `config.js`.
+Probado en navegador: escribir arriba llena D1, escribir en D1 llena arriba,
+guardar desde la barra antes de la sección 0 manda `state.email`, el campo de
+arriba no se guarda como control propio, y restaurar un borrador llena los
+dos.
+
+**Falta, para Salomé — el envío:**
+
+1. En `drafts.js`, enviar el correo en la rama de creación (`store.insert`),
+   sin que su fallo afecte el guardado, con límite por dirección.
+2. Elegir proveedor y guardar su llave con los secretos.
+3. Cuando el envío funcione, poner `emailCodes: true` en
+   `site/assets/config.js`. **Solo entonces** el formulario dice "We sent it
+   to …". Mientras esté en `false` dice "Write this code down now: there is
+   no way to recover it", porque prometer un correo que no llega es peor que
+   no prometer nada.
+
 ## El hallazgo: casi todo ya existe
 
 Buscando esto encontré que la tubería está construida y solo le falta el

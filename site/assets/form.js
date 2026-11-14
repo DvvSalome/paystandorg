@@ -586,6 +586,7 @@
       node.className = "secprog" + (mine.length && !openHere ? " done" : "");
     });
 
+    syncSaveEmail();
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
@@ -630,6 +631,27 @@
     var btn = el("button", "savebtn primary", "Save and get my code");
     btn.type = "button";
     top.appendChild(txt); top.appendChild(btn);
+
+    // The email is asked here, next to the button that issues the code,
+    // because this bar is the first thing in the form: someone can save
+    // before touching section 0, and D1 — where the email used to live
+    // alone — is in section D, the fifth. Until then V.D1__email was empty
+    // and every early save reached the server with email: null.
+    //
+    // This field and D1's email part are two views of ONE value,
+    // V.D1__email, bound both ways. Not a prefilled copy: a copy diverges
+    // (the A4/G2 problem). It is also not a control of any question, so
+    // snapshot() never stores it on its own — restoring D1 repaints it.
+    // Spec: docs/email-the-code.md
+    var mailRow = el("div", "mailrow");
+    var ml = el("label", null, "Where should we send your code?");
+    ml.htmlFor = "ga27-save-email";
+    var mi = el("input"); mi.type = "email"; mi.id = "ga27-save-email";
+    mi.autocomplete = "email"; mi.placeholder = "you@example.org"; mi.maxLength = 200;
+    var mh = el("span", "mailhint", "Optional to save. It is also your contact email in section D — change it in either place.");
+    mailRow.appendChild(ml); mailRow.appendChild(mi); mailRow.appendChild(mh);
+    mi.addEventListener("input", function () { setSaveEmail(mi.value); });
+
     var codeRow = el("div", "coderow"); codeRow.hidden = true;
     var codeLab = el("span", null, "Your code:");
     var codeEl = el("strong", "codeval");
@@ -643,7 +665,7 @@
     var rb = el("button", "savebtn", "Resume"); rb.type = "button";
     resume.appendChild(rl); resume.appendChild(ri); resume.appendChild(rb);
     var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
-    root.appendChild(top); root.appendChild(codeRow); root.appendChild(resume); root.appendChild(msg);
+    root.appendChild(top); root.appendChild(mailRow); root.appendChild(codeRow); root.appendChild(resume); root.appendChild(msg);
 
     btn.addEventListener("click", function () { saveDraft(null); });
     saveBtm.addEventListener("click", function () { saveDraft(null); });
@@ -653,12 +675,40 @@
       var done = function () { copy.textContent = "Copied"; window.setTimeout(function () { copy.textContent = "Copy"; }, 1500); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
     });
-    return { root: root, msg: msg, codeRow: codeRow, codeEl: codeEl, input: ri };
+    return { root: root, msg: msg, codeRow: codeRow, codeEl: codeEl, codeNote: codeNote, input: ri, email: mi };
+  }
+
+  // Write the bound email through D1's own input, as if typed there, so the
+  // composite handler rebuilds V.D1, V.D1__email and the section state the
+  // same way it does for typing. One write path, one value.
+  function d1EmailInput() { return document.querySelector("#f-D1 input[type=email]"); }
+  function setSaveEmail(value) {
+    var d = d1EmailInput();
+    if (!d || d.value === value) return;
+    d.value = value;
+    d.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function syncSaveEmail() {
+    if (!savebar || !savebar.email) return;
+    var v = V.D1__email || "";
+    // Never overwrite the field while the person is typing in it.
+    if (savebar.email !== document.activeElement && savebar.email.value !== v) savebar.email.value = v;
+  }
+  function validEmail(x) { return /^[^\s@]+@[^\s@]+$/.test(x || ""); }
+  // Whether the code was actually emailed. CFG.emailCodes stays false until
+  // the server sends mail; until then the honest message is "write it down",
+  // never "we sent it" (commit 0effcb5 removed one such promise already).
+  function codeWasEmailed() { return CFG.emailCodes === true && validEmail(V.D1__email); }
+  function codeNoteText() {
+    return codeWasEmailed()
+      ? "We sent it to " + V.D1__email + ". Keep it anyway: anyone with this code can open your draft. Attached files are not saved, so you will attach them again."
+      : "Write this code down now: there is no way to recover it if you lose it, and anyone with it can open your draft. Attached files are not saved, so you will attach them again.";
   }
 
   function say(kind, text) { savebar.msg.className = "savemsg" + (kind ? " " + kind : ""); savebar.msg.textContent = text || ""; }
   function showCode() {
     savebar.codeRow.hidden = !draftCode; savebar.codeEl.textContent = draftCode;
+    savebar.codeNote.textContent = codeNoteText();
     try { if (draftCode) localStorage.setItem(LS_KEY, draftCode); else localStorage.removeItem(LS_KEY); } catch (e) {}
   }
 
@@ -735,7 +785,8 @@
         draftCode = res.code; showCode();
         ids.forEach(function (id) { SAVED[id] = true; });
         var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
-        say("ok", "Saved at " + hh + ". Your code is " + draftCode + ". Use it to continue later, from any device.");
+        say("ok", "Saved at " + hh + ". Your code is " + draftCode + "." +
+          (codeWasEmailed() ? " We sent it to " + V.D1__email + "." : " Write it down: it cannot be recovered."));
         // updateSaveUI rewrites secmsg, so the flash goes after it.
         updateSaveUI();
         flashSection(secId, "ok", "Saved at " + hh + " ✓");

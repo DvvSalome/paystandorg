@@ -4,13 +4,20 @@ Para Salomé. Estado al 2026-11-13.
 
 ## Estado
 
-**Hecho en el formulario (2026-11-13):** el campo de correo en la barra de
-guardado, atado a la parte de correo de D1 en las dos direcciones; el aviso
-honesto según haya correo o no; y la bandera `emailCodes` en `config.js`.
-Probado en navegador: escribir arriba llena D1, escribir en D1 llena arriba,
-guardar desde la barra antes de la sección 0 manda `state.email`, el campo de
-arriba no se guarda como control propio, y restaurar un borrador llena los
-dos.
+**Hecho en el formulario (2026-11-13), rediseñado el mismo día:** el
+correo se pide en el primer guardado, en una tarjeta que se abre junto al
+botón que la persona pulsó, atado a la parte de correo de D1 en las dos
+direcciones. El código aparece en una tarjeta grande con botón de copiar, y
+después queda a mano en una ficha arriba del formulario. Los guardados
+siguientes solo dicen "Saved at 14:32 ✓". El aviso es honesto según la
+bandera `emailCodes` de `config.js`.
+
+Probado en navegador: la tarjeta no guarda nada hasta que la persona decide;
+un correo inválido se rechaza ahí mismo; el correo de la tarjeta llena D1
+mientras se escribe; el segundo guardado no vuelve a preguntar; si D1 ya
+tiene correo, el primer guardado no pregunta; volver en el mismo navegador
+muestra "Welcome back" y restaura el borrador con los dos correos llenos; y
+se ve bien a 375 px de ancho.
 
 **Falta, para Salomé — el envío:**
 
@@ -42,20 +49,38 @@ Buscando esto encontré que la tubería está construida y solo le falta el
 
 ### 1. El correo llega tarde
 
-El código se emite en el primer guardado, y el botón "Save and get my code"
-es lo primero en pantalla: `form.js:75` inserta la barra de guardado como
-primer hijo del formulario. Alguien puede pulsarlo antes de tocar la sección
-0. Pero el correo vive en D1, en la sección D, la quinta. Hasta llegar ahí
-`V.D1__email` está vacío, `saveDraft` recibe `email: null` y no hay a dónde
-enviar nada.
+El código se emite en el primer guardado, y se puede guardar desde el pie
+de cualquier sección. Pero el correo vivía solo en D1, en la sección D, la
+quinta. Quien guardaba antes de llegar ahí mandaba `email: null` y no había a
+dónde enviar nada.
 
-**Decisión (Iván, 2026-11-13): el correo se pide primero, en la barra de
-guardado, y vive también en D1.**
+**Decisión (Iván, 2026-11-13): el correo se pide antes de que exista el
+código, y vive también en D1.**
 
-> **¿A dónde te enviamos tu código?** [correo]  [Save and get my code]
+Primero se pensó en un campo fijo en la barra de arriba. Se descartó por
+experiencia de uso: obligaba a ver seis cosas en la puerta del formulario
+—explicación, correo, botón de guardar, código, campo para retomar y
+mensajes— antes de escribir nada, con "Save and get my code" como botón
+principal de un formulario vacío.
 
-Junto al botón que genera el código, no en la sección 0: si estuviera en la
-sección 0, quien guarda desde la barra de arriba seguiría llegando sin correo.
+Quedó así, un momento a la vez:
+
+| Momento | Qué ve la persona |
+|---|---|
+| Llega | Una línea: no tiene que terminar de una vez. Un enlace discreto "Have a code?". |
+| Llega y este navegador recuerda un borrador | "Welcome back" con "Continue where I left off". |
+| Primer guardado | Junto al botón que pulsó, una tarjeta: "Save your progress", su correo, "Save and get my code" o "Save without email". |
+| Código emitido | En ese mismo lugar, el código grande con "Copy code". |
+| Guardados siguientes | Solo "Saved at 14:32 ✓". Nada vuelve a preguntar. |
+| Después | Arriba, una ficha compacta con el código y su botón de copiar. |
+
+El primer guardado es el momento en que pedir el correo tiene sentido para
+la persona: está a punto de recibir algo que tiene que poder recuperar. Si D1
+ya tiene un correo válido, no se pregunta.
+
+No hay ventanas modales: el formulario vive en un iframe de altura
+automática, y una capa fija se abriría arriba del contenido, lejos de donde
+está la persona.
 
 #### Un solo valor, dos lugares
 
@@ -154,13 +179,12 @@ existe para resolver.
 
 ## Resumen de lo que cambia
 
-1. `form.js`: un campo de correo en la barra de guardado, atado a
-   `V.D1__email` en las dos direcciones —el de arriba y la parte de correo de
-   D1 son el mismo valor—. `snapshot()` no lo guarda aparte y `restore()`
-   repinta los dos.
+1. `form.js`: la tarjeta del primer guardado, con un correo atado a
+   `V.D1__email` en las dos direcciones. `snapshot()` no lo guarda aparte y
+   `restore()` repinta los dos. **Hecho.**
 2. `drafts.js`: enviar el correo en la rama de creación (`store.insert`), sin
    que su fallo afecte el guardado, con límite por dirección.
-3. `form.js`: el texto del aviso según haya correo o no.
+3. `form.js`: el texto del aviso según haya correo o no. **Hecho.**
 4. Elegir proveedor de correo y guardar su llave donde van los secretos
    —nunca en el repo ni en `config.js`.
 

@@ -81,10 +81,19 @@
   var saveBtm = el("button", "savebtn", "Save progress");
   saveBtm.type = "button";
   subRow.appendChild(sub); subRow.appendChild(saveBtm);
-  bar.appendChild(captcha); bar.appendChild(subRow); bar.appendChild(status);
+  // The bottom "Save progress" gets the same treatment as a section footer:
+  // a host where the save card opens and a flash for the outcome.
+  var endHost = el("div", "savehost");
+  var endFlash = el("span", "secflash"); endFlash.hidden = true;
+  endFlash.setAttribute("role", "status"); endFlash.setAttribute("aria-live", "polite");
+  subRow.appendChild(endFlash);
+  bar.appendChild(captcha); bar.appendChild(subRow); bar.appendChild(endHost); bar.appendChild(status);
   form.appendChild(bar);
   var savebar = buildSaveBar();
   form.insertBefore(savebar.root, form.firstChild);
+  var saveCard = buildSaveCard();
+  var codeCard = buildCodeCard();
+  savebar.email = saveCard.email;
 
   function buildField(f) {
     var wrap = el("div", "f");
@@ -610,72 +619,206 @@
     flash.setAttribute("aria-live", "polite");
     flash.hidden = true;
     row.appendChild(btn); row.appendChild(msg); row.appendChild(flash);
-    secUI[sec.id] = { btn: btn, msg: msg, flash: flash };
+    secUI[sec.id] = { btn: btn, msg: msg, flash: flash, row: row };
     btn.addEventListener("click", function () { saveDraft(sec.id); });
     return row;
   }
 
   // Save feedback next to the button the person actually pressed.
   function flashSection(secId, kind, text) {
-    var ui = secId && secUI[secId];
+    var ui = secId === "__end" ? { flash: endFlash } : (secId && secUI[secId]);
     if (!ui || !ui.flash) return;
     ui.flash.hidden = !text;
     ui.flash.className = "secflash" + (kind ? " " + kind : "");
     ui.flash.textContent = text || "";
   }
 
+  /* ---------- the save experience ----------
+     One moment at a time, depending on what the person is doing:
+
+       arriving        a reassuring line, and a quiet "Have a code?" link —
+                       or "Welcome back" when this browser remembers a draft
+       first save      a card opens next to the button they pressed and asks
+                       where to send the code: the moment the email makes sense
+       code issued     the code, large, with Copy, in that same place
+       later saves     only "Saved at 14:32 ✓"; nothing asks again
+       anytime after   a compact chip with the code at the top of the form
+
+     No modals: the form lives in an auto-height iframe, so a fixed overlay
+     opens at the top of the content, nowhere near the viewport.
+
+     The email field is bound to D1's email part — one value, V.D1__email,
+     two views (docs/email-the-code.md). If D1 already has a valid email,
+     the first save does not ask again. */
+
   function buildSaveBar() {
-    var root = el("div", "savebar");
-    var top = el("div", "savetop");
-    var txt = el("p", "savetext", "Save as you go. You can finish later, from any device, with your code.");
-    var btn = el("button", "savebtn primary", "Save and get my code");
-    btn.type = "button";
-    top.appendChild(txt); top.appendChild(btn);
+    var root = el("div", "door");
 
-    // The email is asked here, next to the button that issues the code,
-    // because this bar is the first thing in the form: someone can save
-    // before touching section 0, and D1 — where the email used to live
-    // alone — is in section D, the fifth. Until then V.D1__email was empty
-    // and every early save reached the server with email: null.
-    //
-    // This field and D1's email part are two views of ONE value,
-    // V.D1__email, bound both ways. Not a prefilled copy: a copy diverges
-    // (the A4/G2 problem). It is also not a control of any question, so
-    // snapshot() never stores it on its own — restoring D1 repaints it.
-    // Spec: docs/email-the-code.md
-    var mailRow = el("div", "mailrow");
-    var ml = el("label", null, "Where should we send your code?");
-    ml.htmlFor = "ga27-save-email";
-    var mi = el("input"); mi.type = "email"; mi.id = "ga27-save-email";
-    mi.autocomplete = "email"; mi.placeholder = "you@example.org"; mi.maxLength = 200;
-    var mh = el("span", "mailhint", "Optional to save. It is also your contact email in section D — change it in either place.");
-    mailRow.appendChild(ml); mailRow.appendChild(mi); mailRow.appendChild(mh);
-    mi.addEventListener("input", function () { setSaveEmail(mi.value); });
+    // arriving, nothing remembered
+    var fresh = el("div", "door-fresh");
+    fresh.appendChild(el("p", "door-lead",
+      "You don't have to finish in one sitting. Save at the end of any section and come back with your code, from any device."));
+    var haveCode = el("button", "linkbtn", "Have a code? Continue your application");
+    haveCode.type = "button";
+    fresh.appendChild(haveCode);
 
-    var codeRow = el("div", "coderow"); codeRow.hidden = true;
-    var codeLab = el("span", null, "Your code:");
-    var codeEl = el("strong", "codeval");
-    var copy = el("button", "savebtn", "Copy"); copy.type = "button";
-    var codeNote = el("span", "codenote", "Keep it somewhere safe: anyone with this code can open your draft. Attached files are not saved, so you will attach them again.");
-    codeRow.appendChild(codeLab); codeRow.appendChild(codeEl); codeRow.appendChild(copy); codeRow.appendChild(codeNote);
-    var resume = el("div", "resumerow");
-    var rl = el("label", null, "Already saved? Enter your code to continue:");
-    var ri = el("input"); ri.type = "text"; ri.placeholder = "GA27-XXX-XXX-XXX"; ri.autocomplete = "off";
-    ri.setAttribute("aria-label", "Saved application code"); ri.maxLength = 20;
-    var rb = el("button", "savebtn", "Resume"); rb.type = "button";
+    // continue with a code
+    var resume = el("div", "door-resume"); resume.hidden = true;
+    var rl = el("label", null, "Your code"); rl.htmlFor = "ga27-resume";
+    var ri = el("input"); ri.type = "text"; ri.id = "ga27-resume"; ri.placeholder = "GA27-XXX-XXX-XXX";
+    ri.autocomplete = "off"; ri.maxLength = 20; ri.spellcheck = false;
+    var rb = el("button", "savebtn primary", "Continue"); rb.type = "button";
     resume.appendChild(rl); resume.appendChild(ri); resume.appendChild(rb);
-    var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
-    root.appendChild(top); root.appendChild(mailRow); root.appendChild(codeRow); root.appendChild(resume); root.appendChild(msg);
 
-    btn.addEventListener("click", function () { saveDraft(null); });
-    saveBtm.addEventListener("click", function () { saveDraft(null); });
+    // arriving, this browser remembers a draft
+    var back = el("div", "door-back"); back.hidden = true;
+    back.appendChild(el("p", "door-title", "Welcome back"));
+    var backTxt = el("p", "door-lead", "");
+    back.appendChild(backTxt);
+    var backRow = el("div", "door-actions");
+    var backGo = el("button", "savebtn primary", "Continue where I left off"); backGo.type = "button";
+    var backNew = el("button", "linkbtn", "Start a new application"); backNew.type = "button";
+    backRow.appendChild(backGo); backRow.appendChild(backNew); back.appendChild(backRow);
+
+    // a draft is active: the code stays at hand
+    var chip = el("div", "door-chip"); chip.hidden = true;
+    chip.appendChild(el("span", "chip-lab", "Your code"));
+    var chipCode = el("strong", "codeval");
+    var chipCopy = el("button", "savebtn small", "Copy"); chipCopy.type = "button";
+    var chipNote = el("span", "chip-note");
+    chip.appendChild(chipCode); chip.appendChild(chipCopy); chip.appendChild(chipNote);
+
+    var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
+    root.appendChild(fresh); root.appendChild(back); root.appendChild(chip);
+    root.appendChild(resume); root.appendChild(msg);
+
+    haveCode.addEventListener("click", function () {
+      resume.hidden = !resume.hidden;
+      if (!resume.hidden) ri.focus();
+    });
     rb.addEventListener("click", function () { resumeDraft(ri.value); });
     ri.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); resumeDraft(ri.value); } });
-    copy.addEventListener("click", function () {
-      var done = function () { copy.textContent = "Copied"; window.setTimeout(function () { copy.textContent = "Copy"; }, 1500); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
+    backGo.addEventListener("click", function () { resumeDraft(rememberedCode); });
+    backNew.addEventListener("click", function () {
+      rememberedCode = "";
+      try { localStorage.removeItem(LS_KEY); } catch (e) {}
+      say("", "");
+      renderDoor();
     });
-    return { root: root, msg: msg, codeRow: codeRow, codeEl: codeEl, codeNote: codeNote, input: ri, email: mi };
+    chipCopy.addEventListener("click", function () { copyCode(chipCopy); });
+    saveBtm.addEventListener("click", function () { saveDraft("__end"); });
+
+    return {
+      root: root, msg: msg, input: ri,
+      fresh: fresh, resume: resume, back: back, backTxt: backTxt,
+      chip: chip, chipCode: chipCode, chipNote: chipNote,
+      email: null      // set by buildSaveCard
+    };
+  }
+
+  // The card that opens at the first save. One element, moved into
+  // whichever footer was clicked.
+  function buildSaveCard() {
+    var card = el("div", "savecard"); card.hidden = true;
+    card.appendChild(el("p", "card-title", "Save your progress"));
+    var lead = el("p", "card-lead", "");
+    card.appendChild(lead);
+    var lab = el("label", null, "Your email"); lab.htmlFor = "ga27-save-email";
+    var mi = el("input"); mi.type = "email"; mi.id = "ga27-save-email";
+    mi.autocomplete = "email"; mi.placeholder = "you@example.org"; mi.maxLength = 200;
+    var hint = el("span", "card-hint", "This is also your contact email in section D. Change it in either place.");
+    var err = el("span", "card-err"); err.hidden = true;
+    var acts = el("div", "door-actions");
+    var go = el("button", "savebtn primary", ""); go.type = "button";
+    var skip = el("button", "linkbtn", "Save without email"); skip.type = "button";
+    acts.appendChild(go); acts.appendChild(skip);
+    card.appendChild(lab); card.appendChild(mi); card.appendChild(hint); card.appendChild(err); card.appendChild(acts);
+
+    mi.addEventListener("input", function () { err.hidden = true; setSaveEmail(mi.value); });
+    function confirm() {
+      var v = mi.value.trim();
+      if (v && !validEmail(v)) {
+        err.textContent = "That doesn't look like an email address.";
+        err.hidden = false; mi.focus(); return;
+      }
+      card.hidden = true;
+      saveDraft(card.dataset.host, { confirmed: true });
+    }
+    go.addEventListener("click", confirm);
+    mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); confirm(); } });
+    skip.addEventListener("click", function () {
+      card.hidden = true;
+      saveDraft(card.dataset.host, { confirmed: true });
+    });
+    return { card: card, lead: lead, email: mi, go: go, err: err };
+  }
+
+  // The card that shows the code right after it is issued.
+  function buildCodeCard() {
+    var card = el("div", "codecard"); card.hidden = true;
+    card.setAttribute("role", "status");
+    card.appendChild(el("p", "card-title", "Your progress is saved"));
+    var row = el("div", "code-big");
+    var code = el("strong", "codeval big");
+    var copy = el("button", "savebtn", "Copy code"); copy.type = "button";
+    row.appendChild(code); row.appendChild(copy);
+    var note = el("p", "card-lead", "");
+    var files = el("p", "card-hint", "Attached files are not saved with your progress — you will attach them again before submitting.");
+    var done = el("button", "linkbtn", "Done"); done.type = "button";
+    card.appendChild(row); card.appendChild(note); card.appendChild(files); card.appendChild(done);
+    copy.addEventListener("click", function () { copyCode(copy); });
+    done.addEventListener("click", function () { card.hidden = true; });
+    return { card: card, code: code, note: note };
+  }
+
+  function hostFor(id) {
+    if (id === "__end") return endHost;
+    return secUI[id] && secUI[id].row;
+  }
+  function openSaveCard(id) {
+    var host = hostFor(id); if (!host) return;
+    codeCard.card.hidden = true;
+    saveCard.card.dataset.host = id;
+    saveCard.lead.textContent = CFG.emailCodes === true
+      ? "We'll email you a code so you can continue from any device."
+      : "You'll get a code to continue from any device.";
+    saveCard.go.textContent = CFG.emailCodes === true ? "Save and email my code" : "Save and get my code";
+    saveCard.err.hidden = true;
+    host.appendChild(saveCard.card);
+    saveCard.card.hidden = false;
+    syncSaveEmail();
+    saveCard.email.focus();
+  }
+  function showCodeCard(id) {
+    var host = hostFor(id); if (!host) return;
+    codeCard.code.textContent = draftCode;
+    codeCard.note.textContent = codeNoteText();
+    host.appendChild(codeCard.card);
+    codeCard.card.hidden = false;
+  }
+  function copyCode(btn) {
+    var label = btn.textContent;
+    var done = function () { btn.textContent = "Copied ✓"; window.setTimeout(function () { btn.textContent = label; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
+  }
+
+  // The top of the form shows exactly one of: the fresh line, welcome back,
+  // or the code chip.
+  var rememberedCode = "";
+  function renderDoor() {
+    var hasCode = !!draftCode, hasMemory = !hasCode && !!rememberedCode;
+    savebar.chip.hidden = !hasCode;
+    savebar.back.hidden = !hasMemory;
+    savebar.fresh.hidden = hasCode || hasMemory;
+    if (hasCode) {
+      savebar.resume.hidden = true;
+      savebar.chipCode.textContent = draftCode;
+      savebar.chipNote.textContent = codeWasEmailed()
+        ? "Sent to " + V.D1__email
+        : "Not emailed — keep it somewhere safe";
+    }
+    if (hasMemory) savebar.backTxt.textContent =
+      "You have an application in progress on this device (" + rememberedCode + ").";
   }
 
   // Write the bound email through D1's own input, as if typed there, so the
@@ -701,15 +844,14 @@
   function codeWasEmailed() { return CFG.emailCodes === true && validEmail(V.D1__email); }
   function codeNoteText() {
     return codeWasEmailed()
-      ? "We sent it to " + V.D1__email + ". Keep it anyway: anyone with this code can open your draft. Attached files are not saved, so you will attach them again."
-      : "Write this code down now: there is no way to recover it if you lose it, and anyone with it can open your draft. Attached files are not saved, so you will attach them again.";
+      ? "We sent it to " + V.D1__email + ". Keep it anyway: anyone with this code can open your application."
+      : "Copy it or write it down now. There is no way to recover a lost code, and anyone with it can open your application.";
   }
 
   function say(kind, text) { savebar.msg.className = "savemsg" + (kind ? " " + kind : ""); savebar.msg.textContent = text || ""; }
   function showCode() {
-    savebar.codeRow.hidden = !draftCode; savebar.codeEl.textContent = draftCode;
-    savebar.codeNote.textContent = codeNoteText();
     try { if (draftCode) localStorage.setItem(LS_KEY, draftCode); else localStorage.removeItem(LS_KEY); } catch (e) {}
+    renderDoor();
   }
 
   function draftControls(wrap) {
@@ -761,8 +903,9 @@
     refresh();
   }
 
-  function saveDraft(secId) {
+  function saveDraft(secId, opts) {
     if (busySaving) return;
+    var firstSave = !draftCode, codeBefore = draftCode;
     // Every message goes to both places: the global bar, and — when a
     // section button was the one pressed — right next to that button.
     // Nothing about saving should be invisible from where you clicked.
@@ -771,7 +914,13 @@
       both("bad", "Saving is not connected in this preview build. Your answers are not stored.");
       return;
     }
-    busySaving = true; both("", "Saving…");
+    // The first save is when a code is issued, so it is the moment to ask
+    // where to send it — unless D1 already has a valid email.
+    if (firstSave && !(opts && opts.confirmed) && !validEmail(V.D1__email)) {
+      openSaveCard(secId);
+      return;
+    }
+    busySaving = true; flashSection(secId, "", "Saving…");
     var ids = SECTIONS.map(function (s) { return s.id; });
     postJSON(CFG.endpoint + "/draft/save", { code: draftCode || undefined, state: snapshot(), saved_sections: ids })
       .catch(function (err) {
@@ -785,11 +934,13 @@
         draftCode = res.code; showCode();
         ids.forEach(function (id) { SAVED[id] = true; });
         var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
-        say("ok", "Saved at " + hh + ". Your code is " + draftCode + "." +
-          (codeWasEmailed() ? " We sent it to " + V.D1__email + "." : " Write it down: it cannot be recovered."));
+        say("", "");
         // updateSaveUI rewrites secmsg, so the flash goes after it.
         updateSaveUI();
-        flashSection(secId, "ok", "Saved at " + hh + " ✓");
+        // A new code — first save, or the old one expired and the server
+        // issued another — must be shown, not just acknowledged.
+        if (draftCode !== codeBefore) { flashSection(secId, "", ""); showCodeCard(secId); }
+        else flashSection(secId, "ok", "Saved at " + hh + " ✓");
       })
       .catch(function (err) { both("bad", "We could not save: " + err.message); })
       .then(function () { busySaving = false; });
@@ -806,6 +957,7 @@
         draftCode = res.code; showCode();
         (res.saved_sections || []).forEach(function (id) { SAVED[id] = true; });
         updateSaveUI();
+        rememberedCode = "";
         say("ok", "Your saved answers are back. Attach your files again before submitting.");
         savebar.root.scrollIntoView({ behavior: "smooth", block: "start" });
       })
@@ -936,7 +1088,8 @@
 
   try {
     var remembered = localStorage.getItem(LS_KEY);
-    if (remembered) { savebar.input.value = remembered; say("", "You have a saved draft on this device. Press Resume to continue it."); }
+    if (remembered) rememberedCode = remembered;
   } catch (e) {}
+  renderDoor();
   refresh();
 })();

@@ -551,11 +551,53 @@ def read_sheet(sheets_api, spreadsheet_id, tab_name, range_str=None):
     return result.get('values', [])
 
 
+GRID_HEADROOM_ROWS = 500
+
+
+def ensure_grid(sheets_api, spreadsheet_id, tab_name, last_row, last_col):
+    """
+    Grow a tab so that (last_row, last_col) exists before writing there.
+
+    values().update fails with "exceeds grid limits" outside the tab's size;
+    only values().append grows it. Found 2026-11-13 when the result tabs got
+    their v3 columns. The Process Log gets at least one row per run, so with a
+    30-minute cron the default 1000 rows would run out in about three weeks and
+    every later log write would fail. Rows grow with headroom to keep this to
+    an occasional call.
+    """
+    meta = sheets_api.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))",
+    ).execute()
+    for sh in meta.get("sheets", []):
+        props = sh.get("properties", {})
+        if props.get("title") != tab_name:
+            continue
+        grid = props.get("gridProperties", {})
+        reqs = []
+        if grid.get("rowCount", 0) < last_row:
+            reqs.append({"appendDimension": {
+                "sheetId": props["sheetId"], "dimension": "ROWS",
+                "length": last_row - grid.get("rowCount", 0) + GRID_HEADROOM_ROWS}})
+        if grid.get("columnCount", 0) < last_col:
+            reqs.append({"appendDimension": {
+                "sheetId": props["sheetId"], "dimension": "COLUMNS",
+                "length": last_col - grid.get("columnCount", 0)}})
+        if reqs:
+            sheets_api.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": reqs}).execute()
+            print(f"  [{tab_name}] grid grown to fit row {last_row}, column {last_col}")
+        return
+    raise ValueError(f"tab not found: {tab_name}")
+
+
 @with_retry
 def write_sheet(sheets_api, spreadsheet_id, tab_name, values, start_row=2):
     """Write rows to a tab (append style — starts at given row)."""
     if not values:
         return
+    ensure_grid(sheets_api, spreadsheet_id, tab_name,
+                start_row + len(values) - 1, max(len(r) for r in values))
     num_cols = len(values[0]) if values else 1
     def col_letter(n):
         r = ""
@@ -4640,6 +4682,12 @@ def atomic_batch_write(sheets_api, spreadsheet_id, tab_data_list):
             "range": f"'{tab_name}'!A{start_row}:{end_col}",
             "values": values
         })
+        try:
+            ensure_grid(sheets_api, spreadsheet_id, tab_name,
+                        start_row + len(values) - 1, max(len(r) for r in values))
+        except Exception as grid_err:
+            # The write below then fails with the real reason and is reported.
+            print(f"  [{tab_name}] could not grow grid: {type(grid_err).__name__}: {grid_err}")
 
     if not data_payloads:
         return 0, []

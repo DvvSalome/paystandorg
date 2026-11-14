@@ -66,6 +66,9 @@ def sync(api, sheet_id, apply=False, out=print):
         if not apply:
             still_missing += 1
             continue
+        # A tab is created with a fixed number of columns; writing past it
+        # fails ("exceeds grid limits"). Grow it first.
+        P.ensure_grid(api, sheet_id, tab, 1, max(len(wanted), len(headers) + len(missing)))
         values = api.spreadsheets().values()
         if data_rows == 0:
             values.clear(spreadsheetId=sheet_id, range=f"'{tab}'!1:1", body={}).execute()

@@ -165,6 +165,11 @@ def setup(m, tmp, drive_ref):
     m.fetch_application_files = lambda app_id, cfg: [
         {"question": q, "storage_path": f"{app_id}/{q}-{n}", "file_name": n,
          "mime_type": "application/pdf", "size_bytes": 10} for q, n in FILES.get(app_id, [])]
+    # step_flag downloads the OFAC list from treasury.gov and caches it at a
+    # path fixed at import (the real cache). Never from a test.
+    m.download_ofac_sdn = lambda *a, **k: ([], {
+        "source": "test", "download_date": "", "entry_count": 0,
+        "cache_path": "", "cache_age_days": 0, "cache_fresh": True})
     m.download_supabase_doc = lambda value, cfg=None: (
         (None, None) if value.endswith("falla.pdf") else (b"%PDF " + value.encode(), "application/pdf"))
 

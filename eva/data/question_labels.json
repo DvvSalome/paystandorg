@@ -1,0 +1,409 @@
+{
+  "_generated": "by scripts/gen-question-labels.mjs from site/assets/questions.js — do not edit by hand",
+  "sections": [
+    {
+      "id": "0",
+      "title": "Before you apply"
+    },
+    {
+      "id": "A",
+      "title": "Tell us about you"
+    },
+    {
+      "id": "B",
+      "title": "Organization"
+    },
+    {
+      "id": "C",
+      "title": "Documents"
+    },
+    {
+      "id": "D",
+      "title": "Contact and authorized representative"
+    },
+    {
+      "id": "E",
+      "title": "Project"
+    },
+    {
+      "id": "F",
+      "title": "Measurement"
+    },
+    {
+      "id": "G",
+      "title": "Budget and sustainability"
+    },
+    {
+      "id": "H",
+      "title": "Experience and support"
+    },
+    {
+      "id": "I",
+      "title": "Participant protection"
+    },
+    {
+      "id": "J",
+      "title": "Renewal"
+    },
+    {
+      "id": "K",
+      "title": "Disclosures and certification"
+    }
+  ],
+  "fields": [
+    {
+      "id": "0.1",
+      "section": "0",
+      "label": "What you will need to apply",
+      "type": "checks"
+    },
+    {
+      "id": "0.2",
+      "section": "0",
+      "label": "Eligibility checklist",
+      "type": "checks"
+    },
+    {
+      "id": "A1",
+      "section": "A",
+      "label": "Are you applying as an organization or as an individual?",
+      "type": "radio"
+    },
+    {
+      "id": "A1b",
+      "section": "A",
+      "label": "What type of organization?",
+      "type": "radio"
+    },
+    {
+      "id": "A2",
+      "section": "A",
+      "label": "How long has your organization or project been operating?",
+      "type": "radio"
+    },
+    {
+      "id": "A3",
+      "section": "A",
+      "label": "Have you received a grant from Paystand.org before?",
+      "type": "radio"
+    },
+    {
+      "id": "B1",
+      "section": "B",
+      "label": "Legal name, exactly as it appears on your registration document or on your ID",
+      "type": "text"
+    },
+    {
+      "id": "B2",
+      "section": "B",
+      "label": "Country of registration, or country of residence",
+      "type": "country"
+    },
+    {
+      "id": "B3",
+      "section": "B",
+      "label": "Full name of the legal representative or founder",
+      "type": "text"
+    },
+    {
+      "id": "B4",
+      "section": "B",
+      "label": "Registered address",
+      "type": "textarea"
+    },
+    {
+      "id": "B5",
+      "section": "B",
+      "label": "Total organizational budget last year",
+      "type": "number"
+    },
+    {
+      "id": "B7",
+      "section": "B",
+      "label": "Number of full-time paid staff",
+      "type": "number"
+    },
+    {
+      "id": "B8",
+      "section": "B",
+      "label": "Registration or tax ID number",
+      "type": "text"
+    },
+    {
+      "id": "B6",
+      "section": "B",
+      "label": "Website or main social media profile",
+      "type": "url"
+    },
+    {
+      "id": "C1",
+      "section": "C",
+      "label": "Legal identity document",
+      "type": "file"
+    },
+    {
+      "id": "C2",
+      "section": "C",
+      "label": "Tax form — W-9 or W-8",
+      "type": "file"
+    },
+    {
+      "id": "C3",
+      "section": "C",
+      "label": "If the registration is in a person's name: who is it, and what is their role?",
+      "type": "text"
+    },
+    {
+      "id": "D1",
+      "section": "D",
+      "label": "Primary contact",
+      "type": "composite"
+    },
+    {
+      "id": "D2",
+      "section": "D",
+      "label": "Is the primary contact authorized to sign agreements for the organization?",
+      "type": "radio"
+    },
+    {
+      "id": "D3",
+      "section": "D",
+      "label": "Authorized representative who will sign the agreement",
+      "type": "composite"
+    },
+    {
+      "id": "D4",
+      "section": "D",
+      "label": "Additional email to copy on the agreement and payment notices",
+      "type": "email"
+    },
+    {
+      "id": "E1",
+      "section": "E",
+      "label": "Project title, and a summary in 2–3 sentences",
+      "type": "titlesummary"
+    },
+    {
+      "id": "E2",
+      "section": "E",
+      "label": "Start date and end date",
+      "type": "datepair"
+    },
+    {
+      "id": "E3",
+      "section": "E",
+      "label": "Where will the project take place?",
+      "type": "text"
+    },
+    {
+      "id": "E4",
+      "section": "E",
+      "label": "What economic barrier will this project address?",
+      "type": "textarea"
+    },
+    {
+      "id": "E5",
+      "section": "E",
+      "label": "How many people will participate directly?",
+      "type": "number"
+    },
+    {
+      "id": "E6",
+      "section": "E",
+      "label": "Who are they, how will they be selected, and what is your relationship with them?",
+      "type": "textarea"
+    },
+    {
+      "id": "E7",
+      "section": "E",
+      "label": "Your primary result in one sentence",
+      "type": "text"
+    },
+    {
+      "id": "E8",
+      "section": "E",
+      "label": "How will participants apply what they learn, and which partner creates that opportunity?",
+      "type": "textarea"
+    },
+    {
+      "id": "E9",
+      "section": "E",
+      "label": "What will Bitcoin be used for?",
+      "type": "checks"
+    },
+    {
+      "id": "E10",
+      "section": "E",
+      "label": "Three milestones",
+      "type": "milestones"
+    },
+    {
+      "id": "E11",
+      "section": "E",
+      "label": "What could prevent success, and how will you reduce that risk?",
+      "type": "textarea"
+    },
+    {
+      "id": "E12",
+      "section": "E",
+      "label": "Where do you expect the community to be when the grant ends?",
+      "type": "radio"
+    },
+    {
+      "id": "E13",
+      "section": "E",
+      "label": "How will value circulate locally?",
+      "type": "textarea"
+    },
+    {
+      "id": "F1",
+      "section": "F",
+      "label": "Main measure — which one will you report on?",
+      "type": "radio"
+    },
+    {
+      "id": "F2",
+      "section": "F",
+      "label": "Where are you starting from?",
+      "type": "baseline"
+    },
+    {
+      "id": "F3",
+      "section": "F",
+      "label": "Where do you expect to be at 12 months?",
+      "type": "valuedate"
+    },
+    {
+      "id": "F4",
+      "section": "F",
+      "label": "How will you verify it?",
+      "type": "radio"
+    },
+    {
+      "id": "F5",
+      "section": "F",
+      "label": "Previous Bitcoin or financial-inclusion projects and their results",
+      "type": "textarea"
+    },
+    {
+      "id": "G1",
+      "section": "G",
+      "label": "Total project budget",
+      "type": "number"
+    },
+    {
+      "id": "G2",
+      "section": "G",
+      "label": "Amount requested from Paystand.org",
+      "type": "number"
+    },
+    {
+      "id": "G3",
+      "section": "G",
+      "label": "Are you applying to other funders for this same project?",
+      "type": "funders"
+    },
+    {
+      "id": "G4",
+      "section": "G",
+      "label": "Requested amount by category",
+      "type": "budget"
+    },
+    {
+      "id": "G5",
+      "section": "G",
+      "label": "Main uses of the funds",
+      "type": "textarea"
+    },
+    {
+      "id": "G7",
+      "section": "G",
+      "label": "What will keep working after the grant ends, and how will you sustain it?",
+      "type": "textarea"
+    },
+    {
+      "id": "G8",
+      "section": "G",
+      "label": "How would you prefer to receive the funds?",
+      "type": "radio"
+    },
+    {
+      "id": "H1",
+      "section": "H",
+      "label": "Which option best describes your team's capacity?",
+      "type": "radio"
+    },
+    {
+      "id": "H2",
+      "section": "H",
+      "label": "How would you use Paystand.org's technical support and volunteers?",
+      "type": "textarea"
+    },
+    {
+      "id": "I1",
+      "section": "I",
+      "label": "Will the project involve children under 18?",
+      "type": "radio"
+    },
+    {
+      "id": "I2",
+      "section": "I",
+      "label": "Child safeguarding policy",
+      "type": "safeguard"
+    },
+    {
+      "id": "I3",
+      "section": "I",
+      "label": "What participant data will you collect, and how will you protect it?",
+      "type": "textarea"
+    },
+    {
+      "id": "J1",
+      "section": "J",
+      "label": "What did you promise in 2026, and what did you achieve?",
+      "type": "textarea"
+    },
+    {
+      "id": "J2",
+      "section": "J",
+      "label": "Which stage did the community reach in 2026?",
+      "type": "radio"
+    },
+    {
+      "id": "J3",
+      "section": "J",
+      "label": "Upload your 2026 report, if you have one",
+      "type": "file"
+    },
+    {
+      "id": "K1",
+      "section": "K",
+      "label": "Anything to disclose?",
+      "type": "checks"
+    },
+    {
+      "id": "K2",
+      "section": "K",
+      "label": "Details of any disclosure, or of any eligibility statement you could not check",
+      "type": "textarea"
+    },
+    {
+      "id": "K3",
+      "section": "K",
+      "label": "Certification",
+      "type": "checks"
+    },
+    {
+      "id": "K4",
+      "section": "K",
+      "label": "Data consent",
+      "type": "checks"
+    },
+    {
+      "id": "K5",
+      "section": "K",
+      "label": "Name of the person submitting, and date",
+      "type": "submitter"
+    }
+  ]
+}

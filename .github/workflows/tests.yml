@@ -34,6 +34,9 @@ jobs:
       - name: Question map — form, Supabase view and pipeline agree
         run: node tests/question_map.test.mjs
 
+      - name: Question labels — Eva's copy of each application uses current wording
+        run: node tests/question_labels.test.mjs
+
   python:
     runs-on: ubuntu-latest
     steps:
@@ -61,5 +64,6 @@ jobs:
           python3 test_watermark_lock.py
           python3 test_funciones_base.py
           python3 test_form_options.py   # needs node and site/assets/questions.js
+          python3 test_documentos.py
           python3 scoring_verify.py --fixtures
           python3 test_crosscheck.py

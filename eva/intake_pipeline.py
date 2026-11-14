@@ -47,6 +47,7 @@ import subprocess
 # Google API
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseUpload
 
 # ─── P1.1: Google API retry with exponential backoff ────────────────────────
 MAX_RETRIES = 3
@@ -924,42 +925,249 @@ def generate_grantee_id(year, existing_registry):
     return f"GR-{year}-{max_num + 1:03d}"
 
 
-def create_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_id):
-    """
-    Create a folder for a new grantee in the Grant Application 2027 folder.
-    Returns folder_id or None if creation fails.
-    """
-    if not parent_folder_id:
-        return None
-    folder_name = f"{grantee_id} - {legal_name}"
-    try:
-        # Check if folder already exists
-        results = drive_service.files().list(
-            q=f"name='{folder_name}' and '{parent_folder_id}' in parents and trashed=false",
-            corpora="drive",
-            driveId="0AI7r3Td00baEUk9PVA",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            fields="files(id, name)"
-        ).execute()
-        existing = results.get("files", [])
-        if existing:
-            return existing[0]["id"]
+# ─── Applicant folders and documents in Drive ──────────────────────────────
+#
+# Decided 2026-11-13 (Iván, with the Drive rules Marisa set out in
+# skills/busqueda-inventario/SKILL.md):
+#   - One folder per organization per year, inside "Grant Application 2027":
+#     "GR-id - Legal name". Renewals too: a 2026 grantee keeps its GR-id and
+#     gets a 2027 folder. Earlier years' folders are never written to.
+#   - In it, a copy of the whole application as a Google Doc and every file the
+#     applicant uploaded (C1, C2, I2, J3), each prefixed with the application ID.
+#   - Eva never writes to 1.1 Administration (legal evidence, assembled by the
+#     team after approval), Drafts/, or anything outside the 2027 folder.
+#   - Re-running does not duplicate anything: every write checks first.
+# Until then the pipeline only created folders for NEW organizations and never
+# stored a document: C1 was read in memory for the name check and discarded.
 
-        # Create folder
+SHARED_DRIVE_ID = "0AI7r3Td00baEUk9PVA"   # Paystand Impact Foundation
+FOLDER_MIME = "application/vnd.google-apps.folder"
+GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
+APPLICATION_COPY_SUFFIX = "Solicitud"
+
+
+def drive_q_escape(s):
+    """
+    Quote a value for a Drive query string. Without this a legal name with an
+    apostrophe ("Women's Bitcoin Fund") made the query invalid; the error was
+    caught and the organization silently got no folder.
+    """
+    return str(s).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def drive_find_child(drive_service, parent_id, name, folders_only=False):
+    """Return the id of a non-trashed child called `name`, or None."""
+    q = (f"name='{drive_q_escape(name)}' and '{drive_q_escape(parent_id)}' in parents "
+         f"and trashed=false")
+    if folders_only:
+        q += f" and mimeType='{FOLDER_MIME}'"
+    res = drive_service.files().list(
+        q=q, corpora="drive", driveId=SHARED_DRIVE_ID,
+        supportsAllDrives=True, includeItemsFromAllDrives=True,
+        fields="files(id, name)",
+    ).execute()
+    files = res.get("files", [])
+    return files[0]["id"] if files else None
+
+
+def drive_folder_url(folder_id):
+    return f"https://drive.google.com/drive/folders/{folder_id}" if folder_id else ""
+
+
+def drive_file_url(file_id, google_doc=False):
+    if not file_id:
+        return ""
+    if google_doc:
+        return f"https://docs.google.com/document/d/{file_id}/edit"
+    return f"https://drive.google.com/file/d/{file_id}/view"
+
+
+def ensure_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_id):
+    """
+    The organization's folder for this year, created if missing.
+    Returns (folder_id, error). Never raises: a Drive failure must not stop
+    the application from being processed, but it must not be silent either.
+    """
+    if not drive_service:
+        return None, "no Drive connection"
+    if not parent_folder_id:
+        return None, "grant_application_2027_folder not configured"
+    if not grantee_id or not (legal_name or "").strip():
+        return None, "no grantee ID or legal name"
+    folder_name = f"{grantee_id} - {legal_name.strip()}"
+    try:
+        existing = drive_find_child(drive_service, parent_folder_id, folder_name,
+                                    folders_only=True)
+        if existing:
+            return existing, None
         folder = drive_service.files().create(
-            body={
-                "name": folder_name,
-                "mimeType": "application/vnd.google-apps.folder",
-                "parents": [parent_folder_id]
-            },
-            supportsAllDrives=True,
-            fields="id, name"
+            body={"name": folder_name, "mimeType": FOLDER_MIME,
+                  "parents": [parent_folder_id]},
+            supportsAllDrives=True, fields="id, name",
         ).execute()
-        return folder["id"]
+        return folder["id"], None
     except Exception as e:
         print(f"  WARNING: Could not create folder for {grantee_id}: {e}")
+        return None, f"folder: {type(e).__name__}: {str(e)[:120]}"
+
+
+def create_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_id):
+    """Kept for callers outside the pipeline. Returns folder_id or None."""
+    return ensure_grantee_folder(drive_service, grantee_id, legal_name, parent_folder_id)[0]
+
+
+@with_retry
+def fetch_application_files(app_id, supabase_cfg):
+    """
+    The files an application uploaded, from Supabase table application_files
+    (question, storage_path, file_name, mime_type, size_bytes). Read-only, with
+    the same key the ingest uses. The intake_rows view only carries C1, C2 and
+    J3, and I2 (the safeguarding policy) never reached Eva; this table has all.
+    """
+    url = (supabase_cfg.get("url") or "").rstrip("/")
+    key = load_supabase_key(supabase_cfg)
+    if not url or not key:
+        raise ValueError("supabase url or key not configured")
+    query = (f"{url}/rest/v1/application_files"
+             f"?application_id=eq.{urllib.parse.quote(app_id)}"
+             f"&select=question,storage_path,file_name,mime_type,size_bytes"
+             f"&order=question.asc")
+    req = urllib.request.Request(query, headers={
+        "apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"unexpected Supabase response: {type(payload).__name__}")
+    return payload
+
+
+def document_file_name(app_id, question, file_name):
+    base = re.sub(r"[\\/\x00-\x1f]", "_", os.path.basename(str(file_name or "file")))
+    return f"{app_id} · {question} · {base[:120]}"
+
+
+def load_question_labels():
+    """Question text in form order, generated from questions.js."""
+    try:
+        with open(CONFIG_DIR / "question_labels.json", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception as e:
+        print(f"  ⚠️  question_labels.json not loaded ({type(e).__name__}); "
+              f"the application copy will use column names")
         return None
+
+
+def _html(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def application_copy_html(app_id, fields, labels, attachments):
+    """
+    The whole application as the applicant answered it, for the committee and
+    for item 4 of Marisa's Grant Completeness Checklist ("proposal of the
+    cycle"). Answers are escaped: they are applicant text, never markup.
+    """
+    title = f"{app_id} · {fields.get('B1', '').strip() or '(no legal name)'}"
+    out = [f"<html><head><meta charset='utf-8'><title>{_html(title)}</title></head><body>",
+           f"<h1>{_html(title)}</h1>",
+           f"<p>Submitted: {_html(fields.get('timestamp', ''))}</p>"]
+    if labels:
+        sections = {s["id"]: s["title"] for s in labels.get("sections", [])}
+        order = [(f["id"], f["section"], f["label"]) for f in labels.get("fields", [])]
+    else:
+        sections, order = {}, [(fid, "", col) for fid, col in QUESTION_MAP.items()
+                               if fid != "timestamp"]
+    current = None
+    for fid, sec, label in order:
+        raw = str(fields.get(fid, "") or "").strip()
+        if fid in attachments:
+            # The file, plus any text answer the same question carries (I2 is
+            # a policy file OR a commitment, and always a named person).
+            link, name = attachments[fid]
+            parts = [f"<a href='{_html(link)}'>{_html(name)}</a>" if link else _html(name)]
+            if raw and not raw.startswith(SUPABASE_DOC_PREFIX):
+                parts.append(_html(raw).replace("\n", "<br>"))
+            value = "<br>".join(parts)
+        elif raw and not raw.startswith(SUPABASE_DOC_PREFIX):
+            value = _html(raw).replace("\n", "<br>")
+        else:
+            continue
+        if sec and sec != current:
+            current = sec
+            out.append(f"<h2>{_html(sec)}. {_html(sections.get(sec, ''))}</h2>")
+        out.append(f"<p><b>{_html(fid)}. {_html(label)}</b><br>{value}</p>")
+    out.append("</body></html>")
+    return "\n".join(out)
+
+
+def _upload(drive_service, parent_id, name, data, mime, as_google_doc=False):
+    body = {"name": name, "parents": [parent_id]}
+    if as_google_doc:
+        body["mimeType"] = GOOGLE_DOC_MIME
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime, resumable=False)
+    created = drive_service.files().create(
+        body=body, media_body=media, supportsAllDrives=True, fields="id",
+    ).execute()
+    return created["id"]
+
+
+def store_application_documents(drive_service, folder_id, app_id, fields,
+                                supabase_cfg, labels=None):
+    """
+    Put every uploaded file and a copy of the application in the folder.
+    Returns {"stored": [...], "existing": [...], "errors": [...],
+             "copy_url": str}. Never raises.
+    """
+    result = {"stored": [], "existing": [], "errors": [], "copy_url": ""}
+    if not drive_service or not folder_id:
+        result["errors"].append("no folder to store documents in")
+        return result
+
+    attachments = {}   # question -> (url, display name), for the copy
+    try:
+        files = fetch_application_files(app_id, supabase_cfg)
+    except Exception as e:
+        files = []
+        result["errors"].append(f"file list: {type(e).__name__}: {str(e)[:120]}")
+
+    for rec in files:
+        q = rec.get("question", "?")
+        name = document_file_name(app_id, q, rec.get("file_name"))
+        try:
+            existing = drive_find_child(drive_service, folder_id, name)
+            if existing:
+                result["existing"].append(q)
+                attachments[q] = (drive_file_url(existing), name)
+                continue
+            data, mime = download_supabase_doc(
+                SUPABASE_DOC_PREFIX + str(rec.get("storage_path", "")), supabase_cfg)
+            if data is None:
+                result["errors"].append(f"{q}: download failed")
+                attachments[q] = ("", f"{name} (not stored: download failed)")
+                continue
+            fid = _upload(drive_service, folder_id, name, data,
+                          rec.get("mime_type") or mime)
+            result["stored"].append(q)
+            attachments[q] = (drive_file_url(fid), name)
+        except Exception as e:
+            result["errors"].append(f"{q}: {type(e).__name__}: {str(e)[:120]}")
+
+    copy_name = f"{app_id} · {APPLICATION_COPY_SUFFIX}"
+    try:
+        existing = drive_find_child(drive_service, folder_id, copy_name)
+        if existing:
+            result["existing"].append(APPLICATION_COPY_SUFFIX)
+            result["copy_url"] = drive_file_url(existing, google_doc=True)
+        else:
+            html = application_copy_html(app_id, fields, labels, attachments)
+            fid = _upload(drive_service, folder_id, copy_name, html.encode("utf-8"),
+                          "text/html", as_google_doc=True)
+            result["stored"].append(APPLICATION_COPY_SUFFIX)
+            result["copy_url"] = drive_file_url(fid, google_doc=True)
+    except Exception as e:
+        result["errors"].append(f"application copy: {type(e).__name__}: {str(e)[:120]}")
+    return result
 
 
 def add_grantee_to_registry_tab(sheets_api, spreadsheet_id, grantee_data):
@@ -980,7 +1188,7 @@ def add_grantee_to_registry_tab(sheets_api, spreadsheet_id, grantee_data):
         "",  # scope_of_work
         "",  # program_type
         "",  # reporting_schedule
-        "",  # folder_link
+        drive_folder_url(grantee_data.get("folder_2027", "")),  # folder_link
         "Yes",  # in_2027_pipeline
         "",  # 2027_pipeline_status
         "New (form submission)",  # 2027_pipeline_tipo
@@ -2213,6 +2421,8 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
 
     # Get 2027 folder ID from config
     folder_2027_id = config.get("grant_application_2027_folder", {}).get("id")
+    supabase_cfg = (config.get("ingest") or {}).get("supabase", {})
+    question_labels = load_question_labels()
 
     print(f"[Step 1: INGEST] Reading from sheet {sheet_id}")
     print(f"  Watermark before: {wm_before}")
@@ -2305,17 +2515,33 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
 
             grantee_id, matched_name, is_renewal = match_grantee(legal_name, country, registry)
 
-            if grantee_id:
-                # Existing grantee — renewal
+            folder_id, folder_error = None, None
+            if not legal_name:
+                # No legal name: no grantee, no folder. Until 2026-11-13 this
+                # created "GR-2027-00N - " with an empty name; three of the four
+                # 2027 registry entries left by the 2 Nov rehearsal were that.
+                # step_flag raises missing_legal_name for a person to resolve.
+                grantee_id, matched_name, is_renewal = "", "", False
+                grantee_match_status = "NO_LEGAL_NAME"
+                folder_error = "no legal name (B1)"
+            elif grantee_id:
+                # Existing grantee — renewal. Same GR-id, but this year's
+                # documents go in a 2027 folder (one folder per year); the
+                # folder of earlier years is never touched.
                 renewals_matched += 1
                 grantee_match_status = "MATCHED"
+                folder_id, folder_error = ensure_grantee_folder(
+                    drive_api, grantee_id, matched_name or legal_name, folder_2027_id)
+                for g in registry:
+                    if g.get("grantee_id") == grantee_id and folder_id:
+                        g["folder_2027"] = folder_id   # folder_link keeps its old value
+                        break
             else:
                 # New grantee — assign ID and create folder
                 grantee_id = generate_grantee_id(2027, registry)
                 grantee_match_status = "NEW"
-
-                # Create folder in Drive
-                folder_id = create_grantee_folder(drive_api, grantee_id, legal_name, folder_2027_id)
+                folder_id, folder_error = ensure_grantee_folder(
+                    drive_api, grantee_id, legal_name, folder_2027_id)
 
                 # Add to registry
                 new_grantee = {
@@ -2325,9 +2551,13 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
                     "first_year": 2027,
                     "prior_apps_count": 0,
                     "total_awarded": 0,
-                    "pillar": fields.get("E4", ""),
+                    # Was fields["E4"], which under v3 is the economic barrier,
+                    # not a pillar. The pillar is inferred later (step 3) and
+                    # confirmed by the program team; it is not known here.
+                    "pillar": "",
                     "status": "New",
                     "folder_link": folder_id or "",
+                    "folder_2027": folder_id or "",
                 }
                 registry.append(new_grantee)
                 new_grantees_created += 1
@@ -2373,7 +2603,21 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
                 "seg_2027_estatus": seg_data.get("estatus", "") if seg_data else "",
                 "seg_2027_tipo": seg_data.get("tipo", "") if seg_data else "",
                 "seg_2027_owner": seg_data.get("owner", "") if seg_data else "",
+                "drive_folder_id": folder_id or "",
             }
+
+            # ── Documents: every uploaded file and a copy of the application ──
+            if folder_id:
+                docs = store_application_documents(
+                    drive_api, folder_id, app_id, fields, supabase_cfg, question_labels)
+            else:
+                docs = {"stored": [], "existing": [], "copy_url": "",
+                        "errors": [folder_error or "no folder"]}
+            app["documents"] = docs
+            if docs["errors"]:
+                print(f"  ⚠️  {app_id} documents: {'; '.join(docs['errors'])}")
+            elif docs["stored"]:
+                print(f"  {app_id} documents stored: {', '.join(docs['stored'])}")
             applications.append(app)
 
             print(f"  {app_id} | {grantee_id} | {grantee_match_status} | {legal_name[:30]}")
@@ -3177,6 +3421,19 @@ def step_flag(applications, run_id, drive_api=None):
             flags["child_protection_missing"] = "YES"
             flags_detail.append(f"I1={i1}_without_safeguarding_policy")
 
+        # No legal name: ingest created no grantee and no folder for it.
+        if not f.get("B1", "").strip():
+            flags["missing_legal_name"] = "YES"
+            flags_detail.append("no_legal_name:no_grantee_or_folder_created")
+
+        # Documents that did not reach the applicant's Drive folder. Not a
+        # judgement on the application, but a person has to fetch them: a
+        # re-run skips this application (it is already in the Cleaned tab).
+        doc_errors = (app.get("documents") or {}).get("errors") or []
+        if doc_errors:
+            flags["documents_not_stored"] = "YES"
+            flags_detail.append("documents_not_stored:" + " | ".join(doc_errors)[:300])
+
         # Eligibility — hard gate. Any statement of 0.2 left unchecked sends the
         # application to manual review, where a person reads K2. The server
         # already requires K2 whenever a box is missing, so "K2 explains it"
@@ -3327,6 +3584,7 @@ def step_flag(applications, run_id, drive_api=None):
             "eligibility_incomplete", "child_protection_missing", "disclosure_present",
             "bitcoin_rule_violation", "budget_invalid", "high_dependency",
             "suspected_participant_identifiers",
+            "missing_legal_name", "documents_not_stored",
         ]
         # Any flag raised that is still not listed is counted too, rather than
         # dropped: a new check must not be invisible because this list was not
@@ -3341,7 +3599,7 @@ def step_flag(applications, run_id, drive_api=None):
         flag_count = 0
         critical_count = 0
         critical_flags = ["ofac_flag", "name_mismatch", "missing_nonprofit_proof", "renewal_discrepancy",
-                          "eligibility_incomplete"]
+                          "eligibility_incomplete", "missing_legal_name"]
 
         for fk in all_flag_keys:
             val = flags.get(fk, "")
@@ -4164,7 +4422,10 @@ def step_package(applications, run_id):
             "Budget_Summary": budget_summary,
             "Contact_Summary": contact_summary,
             "Suggested_Next_Step": suggested,
-            "One_Pager_Link": "",  # Would link to a generated doc
+            # The copy of the whole application and the applicant's folder,
+            # both written at ingest (store_application_documents).
+            "One_Pager_Link": (app.get("documents") or {}).get("copy_url", ""),
+            "Documents_Folder": drive_folder_url(app.get("drive_folder_id", "")),
         }
 
         package_rows.append(package_row)

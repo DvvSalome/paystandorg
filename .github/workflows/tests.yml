@@ -59,5 +59,6 @@ jobs:
           python3 test_import_guard.py
           python3 test_form_contract.py
           python3 test_watermark_lock.py
+          python3 test_funciones_base.py
           python3 scoring_verify.py --fixtures
           python3 test_crosscheck.py

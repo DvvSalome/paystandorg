@@ -1,0 +1,237 @@
+{
+  "_version": "v3",
+  "_frozen_spec": "eva/eva-form-field-map-v3-FROZEN.md",
+  "_notes": "Methodology's board-approved 4-criteria scorecard (30/25/20/25). Sub-weights PROVISIONAL pending board. Field IDs are v3 renumbered — see frozen spec before editing.",
+  "criteria": {
+    "resilience_fit": {
+      "weight": 30,
+      "sub": {
+        "economic_barrier": {
+          "points": 8,
+          "fields": [
+            "E4"
+          ]
+        },
+        "stage_logic": {
+          "points": 12,
+          "fields": [
+            "E7",
+            "F1"
+          ],
+          "uses_inferred_stage": true
+        },
+        "real_opportunity": {
+          "points": 10,
+          "fields": [
+            "E8",
+            "E9"
+          ]
+        }
+      }
+    },
+    "measurable_result": {
+      "weight": 25,
+      "sub": {
+        "primary_result": {
+          "points": 8,
+          "fields": [
+            "E7"
+          ]
+        },
+        "baseline": {
+          "points": 7,
+          "fields": [
+            "F2"
+          ]
+        },
+        "target_verification": {
+          "points": 6,
+          "fields": [
+            "F3",
+            "F4"
+          ]
+        },
+        "milestones": {
+          "points": 4,
+          "fields": [
+            "E10"
+          ]
+        }
+      }
+    },
+    "ability_to_deliver": {
+      "weight": 20,
+      "sub": {
+        "experience": {
+          "points": 8,
+          "fields": [
+            "F5",
+            "J1"
+          ]
+        },
+        "team_capacity": {
+          "points": 5,
+          "fields": [
+            "H1"
+          ]
+        },
+        "risks": {
+          "points": 4,
+          "fields": [
+            "E11"
+          ]
+        },
+        "participants": {
+          "points": 3,
+          "fields": [
+            "E5",
+            "E6"
+          ]
+        }
+      }
+    },
+    "value_sustainability": {
+      "weight": 25,
+      "sub": {
+        "cost_per_participant": {
+          "points": 7,
+          "fields": [
+            "G2",
+            "E5"
+          ]
+        },
+        "other_funders": {
+          "points": 5,
+          "fields": [
+            "G3"
+          ]
+        },
+        "continuity": {
+          "points": 10,
+          "fields": [
+            "G7"
+          ]
+        },
+        "budget_coherence": {
+          "points": 3,
+          "fields": [
+            "G4",
+            "G5"
+          ]
+        }
+      }
+    }
+  },
+  "semaphore": {
+    "green": 70,
+    "yellow": 50,
+    "red": 0
+  },
+  "dependency_ratio": {
+    "_formula": "G2 / B5  (amount requested / last year's org budget)",
+    "low_risk": 0.25,
+    "medium_risk": 0.5,
+    "high_risk": 0.75,
+    "_role": "FLAG ONLY — informational for the reviewer, scores nothing (D5, 2026-11-10)"
+  },
+  "cost_per_participant": {
+    "_formula": "G2 / E5",
+    "_blocked": "cycle median does not exist until applications arrive — see median_seed",
+    "full_marks_multiple": 1.5,
+    "half_marks_multiple": 3.0,
+    "median_seed": null,
+    "defer_if_no_median": true
+  },
+  "team_capacity_points": {
+    "1": 5,
+    "2": 3,
+    "3": 1
+  },
+  "a2_ranges": {
+    "_warning": "MUST match the form's literal strings. '1–3 years' uses an EN DASH (U+2013), not a hyphen. The v2 config used '1 to 3 years' and never matched.",
+    "inicial": [
+      "Less than 1 year"
+    ],
+    "establecida": [
+      "1–3 years",
+      "More than 3 years"
+    ],
+    "accepted_variants": {
+      "Less than 1 year": [
+        "less than 1 year",
+        "<1 year",
+        "<1"
+      ],
+      "1–3 years": [
+        "1–3 years",
+        "1-3 years",
+        "1 to 3 years",
+        "1–3",
+        "1-3"
+      ],
+      "More than 3 years": [
+        "more than 3 years",
+        ">3 years",
+        "3+",
+        ">3"
+      ]
+    }
+  },
+  "max_realistic_request": 1000000,
+  "min_paragraph_words": 15,
+  "valid_pillars": [
+    "Education",
+    "Technology Adoption",
+    "Economic Empowerment"
+  ],
+  "valid_measures": [
+    "Skills",
+    "Access",
+    "Commerce",
+    "Remittances",
+    "Recovery"
+  ],
+  "valid_stages": [
+    "Awareness",
+    "Useful adoption",
+    "Local circulation",
+    "Resilience"
+  ],
+  "expected_measures_by_stage": {
+    "Awareness": [
+      "Skills"
+    ],
+    "Useful adoption": [
+      "Access",
+      "Skills"
+    ],
+    "Local circulation": [
+      "Commerce",
+      "Remittances"
+    ],
+    "Resilience": [
+      "Recovery"
+    ]
+  },
+  "renewal_short_route": {
+    "_decided_by": "Iván, 2026-11-10",
+    "_rationale": "J1 y F5 se traslapan para un grantee 2026, y de J1 tenemos el registro. Verificado que no cuesta puntos: 'experience' es un solo juicio de 8 pts sobre la mejor fuente disponible.",
+    "enabled": true,
+    "skips": [
+      "F5"
+    ],
+    "experience_falls_back_to": "J1"
+  },
+  "participant_data": {
+    "_decided_by": "Iván, 2026-11-10 — default técnico. La regla institucional queda pendiente de Alexandra y Lesly.",
+    "_rationale": "No se necesita permiso para NO recolectar. Si la regla formal resulta más permisiva, aflojarla es trivial; lo contrario no, porque los datos ya estarían recogidos.",
+    "aggregate_only": true,
+    "accept_participant_identifiers": false,
+    "flag_suspected_identifiers": true,
+    "attestation_route_for_high_risk": true,
+    "_note": "Los grantees reportan cifras agregadas. Si una respuesta parece traer identificadores de participantes, se marca para revisión y no se almacena como evidencia."
+  },
+  "_retired": {
+    "measurement_tiering": "Retired 2026-11-13, Iván. The $10,000 tier made F2, F3 and E10 optional for small requests, but the form always asked them, so it only changed what Eva expected. With A4 removed there is also no amount known before sections E and F. F2, F3 and E10 are required of everyone (MEASUREMENT_REQUIRED in intake_pipeline.py)."
+  }
+}

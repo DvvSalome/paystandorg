@@ -7,6 +7,8 @@ fn = root / "supabase" / "functions"
 shim = (fn / "_shared" / "window-shim.js").read_text()
 questions = (fn / "_shared" / "questions.js").read_text()
 validate = re.sub(r"^export ", "", (fn / "_shared" / "validate.js").read_text(), flags=re.M)
+# validate.js imports isEmail from drafts.js; in the single file both are inlined, so the import goes.
+validate = re.sub(r'^import \{[^}]*\} from "\./drafts\.js";\n', "", validate, flags=re.M)
 drafts = re.sub(r"^export ", "", (fn / "_shared" / "drafts.js").read_text(), flags=re.M)
 index = (fn / "intake" / "index.ts").read_text()
 index = re.sub(r'^import "\.\./_shared/[^\n]*\n', "", index, flags=re.M)

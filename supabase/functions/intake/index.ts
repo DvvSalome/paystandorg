@@ -11,7 +11,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import "../_shared/window-shim.js";   // must stay before questions.js
 import "../_shared/questions.js";      // bundled as a module, so it ships with the deploy
 import { cleanAnswers, validate } from "../_shared/validate.js";
-import { loadDraft, normalizeCode, saveDraft } from "../_shared/drafts.js";
+import { isEmail, loadDraft, normalizeCode, saveDraft } from "../_shared/drafts.js";
 
 const BUCKET = "applications";
 // deno-lint-ignore no-explicit-any
@@ -101,8 +101,21 @@ async function submit(req: Request) {
   const { errors, profile, route } = validate(G, answers, files);
   if (Object.keys(errors).length) return json(req, 422, { error: "Some answers need attention.", fields: errors });
 
-  const email = String(answers.D1__email || "").toLowerCase();
-  if (email && (await rateLimited("email:" + email, 3, 24 * 60))) {
+  // The contact email is required and must be a real address. The form
+  // blocks anything else, but this endpoint is public: without this check a
+  // direct request could submit with "hola" or nothing as the only way to
+  // reach the applicant.
+  const email = String(answers.D1__email || "").trim().toLowerCase();
+  if (!isEmail(email)) {
+    return json(req, 422, { error: "Some answers need attention.", fields: { D1: "Enter a valid email address." } });
+  }
+  // The other addresses on the form are optional, but when present they get
+  // the same rule: the signer (D3) and the copy address (D4).
+  const others: Record<string, string> = {};
+  if (answers.D3__email && !isEmail(String(answers.D3__email))) others.D3 = "Enter a valid email address for the signer.";
+  if (answers.D4 && !isEmail(String(answers.D4))) others.D4 = "Enter a valid email address.";
+  if (Object.keys(others).length) return json(req, 422, { error: "Some answers need attention.", fields: others });
+  if (await rateLimited("email:" + email, 3, 24 * 60)) {
     return json(req, 429, { error: "This email already submitted several applications today." });
   }
 

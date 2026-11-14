@@ -17,7 +17,13 @@
   var restoring = false;   // true while a saved draft is being poured back into the controls
   var savedFiles = {};     // file names from the saved draft (files themselves cannot be restored)
   var LS_KEY = "ga27-draft-code";
-  var secUI = {};          // section id -> { btn, msg }
+  var secUI = {};          // section id -> { btn, msg, flash }
+  var secProg = {};
+  var MULTIPART = { composite: 1, titlesummary: 1, datepair: 1, valuedate: 1, baseline: 1,
+                    milestones: 1, funders: 1, safeguard: 1 };
+  var navUI = {};          // section id -> { back, next, msg }
+  var partNotes = {};      // question id -> the "Still needed: …" note under it
+  var touched = {};        // question id -> focus has left it at least once        // section id -> el progreso de su encabezado
   var busySaving = false;
   var form = document.getElementById("form");
 
@@ -35,6 +41,75 @@
   function money(n) { return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 }); }
   function isOrg() { return (V.A1 || "").indexOf("Organization") === 0; }
 
+  /* ---------- email ----------
+     Identical to EMAIL_RE in supabase/functions/_shared/drafts.js, which the
+     server enforces. This file cannot import it, so tests/email.test.mjs
+     fails if the two differ. */
+  var EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+  function validEmail(x) { return typeof x === "string" && x.trim().length <= 200 && EMAIL_RE.test(x.trim()); }
+  // Characters that can never be part of an address. Typing them is blocked;
+  // they are also what appears when someone pastes "Ana <ana@x.org>" or a list.
+  var EMAIL_BAD = /[\s,;:<>()\[\]"\\]/g;
+  var EMAIL_FIND = /[^\s@<>()\[\],;:"]+@[^\s@<>()\[\],;:"]+\.[^\s@<>()\[\],;:".]{2,}/;
+  function cleanEmail(v) {
+    v = String(v || "").replace(EMAIL_BAD, "");
+    var at = v.indexOf("@");
+    if (at !== -1) v = v.slice(0, at + 1) + v.slice(at + 1).replace(/@/g, "");
+    return v.slice(0, 200);
+  }
+  // Format blockers for an email input, so only an address can go in:
+  //   - spaces, commas, angle brackets and the like are dropped as typed
+  //   - a second @ is dropped as typed
+  //   - pasting "Ana Ruiz <ana@x.org>" keeps just ana@x.org
+  //   - leaving the field with something that is not an address shows why
+  // Changes go through an "input" event so every listener (D1's composite
+  // handler, the save card binding) sees the cleaned value.
+  function guardEmail(input, errEl) {
+    input.maxLength = 200;
+    input.spellcheck = false;
+    input.setAttribute("autocapitalize", "off");
+    function setTo(v) {
+      if (input.value === v) return;
+      input.value = v;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    function showErr(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg || "";
+      errEl.hidden = !msg;
+      if (msg) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
+    }
+    // Clean on every input instead of refusing keystrokes. Phone keyboards,
+    // predictive text and autofill insert whole chunks like "ana " at once;
+    // refusing the chunk would leave the field empty with no explanation.
+    // Stripping keeps what is valid. This listener is registered before any
+    // other on the input (D1's composite handler, the save-card binding), so
+    // they all read the cleaned value in the same event.
+    input.addEventListener("input", function () {
+      var c = cleanEmail(input.value);
+      if (c !== input.value) input.value = c;
+    });
+    input.addEventListener("paste", function (e) {
+      var text = (e.clipboardData || window.clipboardData).getData("text") || "";
+      var found = text.match(EMAIL_FIND);
+      e.preventDefault();
+      setTo(found ? found[0].slice(0, 200) : cleanEmail(input.value + text));
+    });
+    input.addEventListener("input", function () {
+      if (errEl && !errEl.hidden && validEmail(input.value)) showErr("");
+    });
+    input.addEventListener("blur", function () {
+      setTo(cleanEmail(input.value));
+      showErr(input.value && !validEmail(input.value) ? "Enter a complete email address, like name@example.org." : "");
+    });
+    return { check: function () {
+      setTo(cleanEmail(input.value));
+      var bad = input.value && !validEmail(input.value);
+      showErr(bad ? "Enter a complete email address, like name@example.org." : "");
+      return !bad;
+    } };
+  }
+
   /* ---------- rendering ---------- */
   SECTIONS.forEach(function (sec) {
     var box = el("fieldset", "sec");
@@ -43,11 +118,23 @@
     head.appendChild(el("div", "secid", "Section " + sec.id));
     head.appendChild(el("h3", null, sec.title));
     if (sec.note) head.appendChild(el("p", "secnote", sec.note));
+    // Progreso repetido en cada encabezado. La barra de arriba queda fuera
+    // de vista en una página de 60 preguntas, y en modo embed su sticky está
+    // desactivado a propósito (form/index.html:44) porque dentro de un
+    // iframe de altura automática no se pega a nada útil. Un indicador por
+    // sección no necesita sticky: siempre está donde la persona acaba de
+    // llegar. Y cuando el formulario pase a una sección por página, este
+    // mismo elemento se convierte en el encabezado del paso.
+    var secprog = el("p", "secprog");
+    secprog.setAttribute("aria-live", "polite");
+    head.appendChild(secprog);
+    secProg[sec.id] = secprog;
     box.appendChild(head);
     F.filter(function (f) { return f.s === sec.id; }).forEach(function (f) {
       box.appendChild(buildField(f));
     });
     box.appendChild(sectionFooter(sec));
+    box.appendChild(sectionNav(sec));
     form.appendChild(box);
   });
 
@@ -69,10 +156,26 @@
   var saveBtm = el("button", "savebtn", "Save progress");
   saveBtm.type = "button";
   subRow.appendChild(sub); subRow.appendChild(saveBtm);
-  bar.appendChild(captcha); bar.appendChild(subRow); bar.appendChild(status);
+  // The bottom "Save progress" gets the same treatment as a section footer:
+  // a host where the save card opens and a flash for the outcome.
+  var endHost = el("div", "savehost");
+  var endFlash = el("span", "secflash"); endFlash.hidden = true;
+  endFlash.setAttribute("role", "status"); endFlash.setAttribute("aria-live", "polite");
+  subRow.appendChild(endFlash);
+  bar.appendChild(captcha); bar.appendChild(subRow); bar.appendChild(endHost); bar.appendChild(status);
   form.appendChild(bar);
   var savebar = buildSaveBar();
   form.insertBefore(savebar.root, form.firstChild);
+  var saveCard = buildSaveCard();
+  var codeCard = buildCodeCard();
+  var stepper = buildStepper();
+  // On its own page the progress block is sticky at the top; the step bar
+  // goes inside it so it stays on screen through a long section. Embedded,
+  // the progress block is static and the parent page draws a fixed copy.
+  var progressBox = document.querySelector(".progress");
+  if (progressBox && window.parent === window) progressBox.appendChild(stepper.root);
+  else form.insertBefore(stepper.root, savebar.root.nextSibling);
+  savebar.email = saveCard.email;
 
   function buildField(f) {
     var wrap = el("div", "f");
@@ -138,8 +241,18 @@
       case "text": case "email": case "url": {
         var inp = reg(el("input"));
         inp.type = f.type;
+        // Every email field gets the same format blockers as D1 — D4 (copy
+        // address) included. Registered before the value listener so it
+        // reads the cleaned value.
+        var ierr = null;
+        if (f.type === "email") {
+          inp.autocomplete = "email";
+          ierr = el("span", "fielderr"); ierr.hidden = true; ierr.setAttribute("role", "alert");
+          guardEmail(inp, ierr);
+        }
         inp.addEventListener("input", function () { V[f.id] = inp.value; refresh(); });
         body.appendChild(inp);
+        if (ierr) body.appendChild(ierr);
         break;
       }
       case "valuedate": {
@@ -202,7 +315,6 @@
         ni.type = "number"; ni.min = f.min != null ? f.min : 0; ni.step = "1";
         ni.inputMode = "decimal"; ni.id = "i-" + f.id;
         ni.addEventListener("input", function () {
-          if (f.id === "G2") V.__g2touched = true;
           V[f.id] = ni.value; refresh();
         });
         wn.appendChild(ni); body.appendChild(wn);
@@ -249,7 +361,10 @@
           V[f.id] = d1.value && d2.value ? d1.value + " to " + d2.value : "";
           V[f.id + "__start"] = d1.value; V[f.id + "__end"] = d2.value;
           if (d1.value && d2.value) {
-            var a = new Date(d1.value), b = new Date(d2.value);
+            // "YYYY-MM-DD" alone is parsed as UTC midnight, which in the
+            // Americas is the previous day locally — 03/01 to 03/31 came out
+            // as 1 month. Anchoring to local midnight keeps the day as typed.
+            var a = new Date(d1.value + "T00:00:00"), b = new Date(d2.value + "T00:00:00");
             var m = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
             if (b.getDate() < a.getDate()) m -= 1;
             V[f.id + "__months"] = m;
@@ -312,11 +427,17 @@
       }
       case "composite": {
         var cr = el("div", f.parts.length > 3 ? "row2" : "row3");
+        var emailErrHosts = [];
         var vals = {};
         f.parts.forEach(function (p) {
           var pi = el("input"); pi.type = p.t; pi.placeholder = p.ph;
           pi.setAttribute("aria-label", f.label + " — " + p.ph);
-          if (p.k === "email") pi.autocomplete = "email";
+          if (p.k === "email") {
+            pi.autocomplete = "email";
+            var perr = el("span", "fielderr"); perr.hidden = true; perr.setAttribute("role", "alert");
+            emailErrHosts.push({ input: pi, err: perr });
+            guardEmail(pi, perr);
+          }
           if (p.k === "name") pi.autocomplete = "name";
           if (p.k === "phone") pi.autocomplete = "tel";
           pi.addEventListener("input", function () {
@@ -329,6 +450,7 @@
           cr.appendChild(pi);
         });
         body.appendChild(cr);
+        emailErrHosts.forEach(function (h) { body.appendChild(h.err); });
         break;
       }
       case "milestones": {
@@ -468,7 +590,11 @@
         var sn = reg(el("input")); sn.type = "text"; sn.placeholder = "Full name";
         sn.autocomplete = "name";
         sn.setAttribute("aria-label", "Name of the person submitting");
-        var sd = el("input"); sd.type = "date"; sd.valueAsDate = new Date(); sd.readOnly = true;
+        // Today in the applicant's own timezone. valueAsDate uses UTC, so in
+        // the Americas after 6 p.m. it showed tomorrow's date.
+        var nowL = new Date();
+        var sd = el("input"); sd.type = "date"; sd.readOnly = true;
+        sd.value = nowL.getFullYear() + "-" + ("0" + (nowL.getMonth() + 1)).slice(-2) + "-" + ("0" + nowL.getDate()).slice(-2);
         sd.setAttribute("aria-label", "Date");
         sn.addEventListener("input", function () {
           V[f.id] = sn.value ? sn.value + ", " + sd.value : "";
@@ -480,6 +606,17 @@
       }
     }
     if (first) { first.id = first.id || "c-" + f.id; lab.htmlFor = first.id; }
+    if (MULTIPART[f.type]) {
+      var pn = el("p", "partnote"); pn.hidden = true; pn.setAttribute("aria-live", "polite");
+      wrap.appendChild(pn);
+      partNotes[f.id] = pn;
+      // "Touched" = focus left the whole question, not just moved between
+      // its own parts — no nagging while someone is still filling it in.
+      wrap.addEventListener("focusout", function (e) {
+        if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+        touched[f.id] = true; refresh();
+      });
+    }
     return wrap;
   }
 
@@ -497,8 +634,19 @@
       if (f.req === "all") { if (!v || v.length < f.options.length) out.push(f.id); }
       else if (typeof f.req === "number") { if (!v || v.length < f.req) out.push(f.id); }
       else if (!v || (typeof v === "string" && !v.trim())) out.push(f.id);
+      // A non-empty combined value is not enough for a question with parts:
+      // every part it asks for has to be there (questions.js, missingParts).
+      else if (partsOf(f).length) out.push(f.id);
     });
     return out;
+  }
+  function hasFile(id) { return !!FILES[id] || !!savedFiles[id]; }
+  function partsOf(f) { return G.missingParts ? G.missingParts(f, V, hasFile) : []; }
+  // The message for a required question that is not complete: name what is
+  // missing when it was started, so "required" never hides "almost".
+  function missingMessage(f) {
+    var parts = partsOf(f);
+    return parts.length && V[f.id] ? "Still needed: " + parts.join("; ") + "." : "This question is required.";
   }
 
   // Extra rules a person can fix: returns { id: message }.
@@ -516,8 +664,20 @@
       Object.keys(cats).forEach(function (k) { sum += num(cats[k]) || 0; });
       if (V.G4 && Math.abs(sum - g2) >= 1) p.G4 = "The categories add up to " + money(sum) + ", but the amount requested is " + money(g2) + ".";
     }
+    F.forEach(function (f) {
+      if (f.type === "email" && visible(f) && V[f.id] && !validEmail(V[f.id]))
+        p[f.id] = "Enter a complete email address, like name@example.org.";
+    });
+    var d3f = F.filter(function (x) { return x.id === "D3"; })[0];
+    if (d3f && visible(d3f) && V.D3__email && !validEmail(V.D3__email))
+      p.D3 = "Enter a complete email address for the signer, like name@example.org.";
+    // The contact email is required and must be a complete address — the
+    // same rule the server enforces on submit.
     var em = V.D1__email;
-    if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) p.D1 = "Enter a valid email address.";
+    // An empty D1 is already reported as missing; this catches a D1 with a
+    // name or phone but no email, which "required" alone would let through.
+    if (!p.D1 && !em && V.D1) p.D1 = "Add the contact email address.";
+    else if (em && !validEmail(em)) p.D1 = "Enter a complete email address, like name@example.org.";
     return p;
   }
 
@@ -527,9 +687,6 @@
     else if (a1.indexOf("Individual") === 0 || a2 === "Less than 1 year") ST.profile = "Initial";
     else ST.profile = "Established";
 
-    // G2 starts from A4 until the applicant edits it.
-    var g2in = document.getElementById("i-G2");
-    if (g2in && V.A4 && !V.__g2touched) { g2in.value = V.A4; V.G2 = V.A4; }
 
     F.forEach(function (f) {
       var node = document.getElementById("f-" + f.id);
@@ -556,9 +713,264 @@
     var done = reqVis.length - missingIds().length;
     document.getElementById("pfill").style.width = (reqVis.length ? Math.round(done / reqVis.length * 100) : 0) + "%";
     document.getElementById("plabel").textContent = done + " of " + reqVis.length + " required questions answered";
+
+    // El mismo número, repetido en cada sección, más lo que falta ahí.
+    var pos = {};
+    SECTIONS.forEach(function (s2, i) { pos[s2.id] = i + 1; });
+    SECTIONS.forEach(function (s2) {
+      var node = secProg[s2.id];
+      if (!node) return;
+      var mine = reqVis.filter(function (f) { return f.s === s2.id; });
+      var openHere = missingIds().filter(function (id) {
+        return mine.some(function (f) { return f.id === id; });
+      }).length;
+      var list = steps(), pos = list.indexOf(s2) + 1;
+      if (!pos) { node.textContent = ""; return; }
+      node.textContent = "Step " + pos + " of " + list.length +
+        "  ·  " + done + " of " + reqVis.length + " required answered overall" +
+        (mine.length ? (openHere ? "  ·  " + openHere + " still open here"
+                                 : "  ·  this section is complete") : "");
+      node.className = "secprog" + (mine.length && !openHere ? " done" : "");
+    });
+
+    syncSaveEmail();
+    if (stepper && step.cur) {
+      // A3 can make J appear or disappear; keep the current step valid.
+      if (!steps().some(function (s2) { return s2.id === step.cur; })) showStep(step.cur, { scroll: false });
+      else { renderStepper(); renderNav(); }
+      // A question marked on Next loses its mark the moment it is complete.
+      var missNow = missingIds(), probsNow = problems();
+      Array.prototype.forEach.call(form.querySelectorAll(".f.error"), function (n) {
+        var fid = n.dataset.fid;
+        if (missNow.indexOf(fid) === -1 && !probsNow[fid]) unmark(fid);
+      });
+      // ...and the count under the section follows: it shrinks as questions
+      // are completed and disappears at zero, never stays stale.
+      var nu = navUI[step.cur];
+      if (nu && /\bbad\b/.test(nu.msg.className)) {
+        var left = openIn(step.cur).length;
+        navSay(step.cur, left ? "bad" : "", !left ? "" : left === 1
+          ? "One question in this section needs your attention."
+          : left + " questions in this section need your attention.");
+      }
+    }
+    // Live note under a multi-part question once the person has left it
+    // half-answered: "Still needed: phone; title." It clears itself as soon
+    // as the last part is filled.
+    F.forEach(function (f) {
+      var note = partNotes[f.id]; if (!note) return;
+      var parts = visible(f) && touched[f.id] && V[f.id] ? partsOf(f) : [];
+      note.hidden = !parts.length;
+      note.textContent = parts.length ? "Still needed: " + parts.join("; ") + "." : "";
+    });
     if (typeof updateSaveUI === "function" && !restoring) updateSaveUI();
   }
 
+
+  /* ---------- one section at a time ----------
+     The form shows one section per screen, with a step bar on top.
+
+       Next     moves on only when the section is complete — every required
+                question answered, every part of a multi-part question
+                filled (missingParts), and no format problem. Otherwise it
+                marks each open question with what is missing and goes to
+                the first. If a code already exists, it also saves.
+       Back     always works.
+       Step bar jumps to any section already reached, never ahead of it.
+
+     A section with no visible question is not a step: J (renewal) exists
+     only when A3 is "Yes, in 2026", and appears or disappears with A3.
+     Submit lives on the last step; if it finds a problem in an earlier
+     section, it opens that section. Resuming a draft lands on the first
+     section with something open. */
+  var step = { cur: null, reached: 0 };       // reached = furthest SECTIONS index visited
+
+  function steps() {
+    return SECTIONS.filter(function (s) {
+      return F.some(function (f) { return f.s === s.id && visible(f); });
+    });
+  }
+  function secIndex(id) { for (var i = 0; i < SECTIONS.length; i++) if (SECTIONS[i].id === id) return i; return -1; }
+  // Open questions of one section: missing, incomplete, or with a format problem.
+  function openIn(id) {
+    var miss = missingIds(), probs = problems();
+    return F.filter(function (f) {
+      return f.s === id && visible(f) && (miss.indexOf(f.id) !== -1 || !!probs[f.id]);
+    });
+  }
+  function startedIn(id) {
+    return F.some(function (f) {
+      var v = V[f.id];
+      return f.s === id && visible(f) && v && (typeof v !== "string" || v.trim());
+    });
+  }
+
+  function buildStepper() {
+    var root = el("nav", "stepper");
+    root.setAttribute("aria-label", "Application sections");
+    var now = el("p", "step-now");
+    var ol = el("ol", "step-list");
+    root.appendChild(now); root.appendChild(ol);
+    return { root: root, now: now, list: ol };
+  }
+  function renderStepper() {
+    var list = steps(), cur = step.cur;
+    stepper.list.textContent = "";
+    list.forEach(function (s, i) {
+      var li = el("li");
+      var b = el("button", "step"); b.type = "button"; b.dataset.sid = s.id;
+      var open = openIn(s.id).length, started = startedIn(s.id);
+      var reachable = secIndex(s.id) <= step.reached;
+      var state = s.id === cur ? "cur" : !reachable ? "locked" : !open ? "done" : started ? "open" : "todo";
+      b.className = "step " + state;
+      b.disabled = state === "locked";
+      b.appendChild(el("span", "step-id", s.id === "0" ? "Start" : s.id));
+      b.appendChild(el("span", "step-title", s.title));
+      if (state === "done") b.appendChild(el("span", "step-mark", "✓"));
+      b.setAttribute("aria-label", "Step " + (i + 1) + ": " + s.title +
+        (state === "done" ? ", complete" : state === "open" ? ", " + open + " still open" :
+         state === "locked" ? ", not reached yet" : ""));
+      if (state === "cur") b.setAttribute("aria-current", "step");
+      b.addEventListener("click", function () { if (!b.disabled) showStep(s.id); });
+      li.appendChild(b); stepper.list.appendChild(li);
+    });
+    // On a narrow screen the list scrolls sideways; keep the current step in view.
+    var curBtn = stepper.list.querySelector("button.step.cur");
+    if (curBtn) stepper.list.scrollLeft = curBtn.offsetLeft - (stepper.list.clientWidth - curBtn.offsetWidth) / 2;
+    var pos = 0; list.forEach(function (s, i) { if (s.id === cur) pos = i + 1; });
+    var curSec = SECTIONS[secIndex(cur)];
+    stepper.now.textContent = curSec ? "Step " + pos + " of " + list.length + " · " + curSec.title : "";
+    publishSteps(list);
+  }
+
+  // Embedded in paystand.org, the form sits in an iframe without its own
+  // scroll, so nothing inside it can stay on screen while the page scrolls.
+  // The parent page draws the step bar instead: it gets the state from here
+  // and sends back the section the person clicks. Same origin only.
+  var EMBEDDED = window.parent !== window;
+  function publishSteps(list) {
+    if (!EMBEDDED) return;
+    var r = stepper.root.getBoundingClientRect();
+    window.parent.postMessage({
+      type: "ga27-steps",
+      now: stepper.now.textContent,
+      anchor: Math.round(r.bottom + window.scrollY),     // where the in-form bar ends
+      steps: list.map(function (s) {
+        var b = null;
+        Array.prototype.forEach.call(stepper.list.querySelectorAll("button.step"), function (x) {
+          if (x.dataset.sid === s.id) b = x;
+        });
+        return { id: s.id, label: s.id === "0" ? "Start" : s.id, title: s.title,
+                 state: b ? b.className.replace("step ", "") : "todo" };
+      })
+    }, location.origin);
+  }
+  if (EMBEDDED) window.addEventListener("message", function (e) {
+    if (e.origin !== location.origin || e.source !== window.parent || !e.data) return;
+    if (e.data.type === "ga27-goto") {
+      var id = String(e.data.id || "");
+      var ok = steps().some(function (x) { return x.id === id; }) && secIndex(id) <= step.reached;
+      if (ok) showStep(id);
+    }
+  });
+
+  function sectionNav(sec) {
+    var row = el("div", "secnav");
+    var back = el("button", "savebtn", "← Back"); back.type = "button";
+    var msg = el("span", "navmsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
+    var next = el("button", "savebtn primary", "Next"); next.type = "button";
+    row.appendChild(back); row.appendChild(msg); row.appendChild(next);
+    back.addEventListener("click", function () { goBy(-1); });
+    next.addEventListener("click", goNext);
+    navUI[sec.id] = { back: back, next: next, msg: msg };
+    return row;
+  }
+  function navSay(id, kind, text) {
+    var ui = navUI[id]; if (!ui) return;
+    ui.msg.className = "navmsg" + (kind ? " " + kind : "");
+    ui.msg.textContent = text || "";
+  }
+  function renderNav() {
+    var list = steps(), i = -1;
+    list.forEach(function (s, k) { if (s.id === step.cur) i = k; });
+    var ui = navUI[step.cur]; if (!ui || i < 0) return;
+    ui.back.hidden = i === 0;
+    var nxt = list[i + 1];
+    ui.next.hidden = !nxt;
+    if (nxt) ui.next.textContent = "Next: " + nxt.title + " →";
+  }
+
+  function showStep(id, opts) {
+    var list = steps();
+    if (!list.some(function (s) { return s.id === id; })) {
+      // The section is not a step (any more): go to the nearest one before it.
+      var k = secIndex(id), pick = list[0];
+      list.forEach(function (s) { if (secIndex(s.id) <= k) pick = s; });
+      id = pick.id;
+    }
+    step.cur = id;
+    step.reached = Math.max(step.reached, secIndex(id));
+    SECTIONS.forEach(function (s) {
+      var box = document.getElementById("sec-" + s.id);
+      if (box) box.hidden = s.id !== id;
+    });
+    bar.hidden = id !== list[list.length - 1].id;      // Submit only on the last step
+    renderStepper(); renderNav();
+    if (window.GA27_reportHeight) window.GA27_reportHeight();
+    if (!opts || opts.scroll !== false) {
+      // scrollIntoView reaches the parent page too, so this works inside the
+      // auto-height iframe where the form is embedded.
+      if (EMBEDDED) stepper.root.scrollIntoView({ behavior: "smooth", block: "start" });
+      else {
+        // The step bar is sticky here; land the section just below it.
+        var box2 = document.getElementById("sec-" + id);
+        var over = progressBox ? progressBox.getBoundingClientRect().height : 0;
+        window.scrollTo({ top: box2.getBoundingClientRect().top + window.scrollY - over - 12, behavior: "smooth" });
+      }
+      var h = document.querySelector("#sec-" + id + " h3");
+      if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+    }
+  }
+  function goBy(d) {
+    var list = steps(), i = 0;
+    list.forEach(function (s, k) { if (s.id === step.cur) i = k; });
+    var t = list[Math.max(0, Math.min(list.length - 1, i + d))];
+    navSay(step.cur, "", "");
+    showStep(t.id);
+  }
+  function goNext() {
+    var open = openIn(step.cur), probs = problems(), miss = missingIds();
+    // clear this section's old marks, then mark what is open now
+    open.concat(F.filter(function (f) { return f.s === step.cur; })).forEach(function (f) { unmark(f.id); });
+    if (open.length) {
+      open.forEach(function (f) {
+        touched[f.id] = true;
+        mark(f.id, miss.indexOf(f.id) !== -1 ? missingMessage(f) : probs[f.id]);
+      });
+      refresh();
+      navSay(step.cur, "bad", open.length === 1
+        ? "One question in this section needs your attention."
+        : open.length + " questions in this section need your attention.");
+      document.getElementById("f-" + open[0].id).scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    navSay(step.cur, "", "");
+    // Saving on the way: only once a code exists, so moving on never stops
+    // to ask for an email.
+    if (draftCode && CFG.endpoint && !busySaving) saveDraft(step.cur);
+    goBy(1);
+  }
+  function resumeAtFirstOpen() {
+    var list = steps(), target = list[list.length - 1];
+    for (var i = 0; i < list.length; i++) if (openIn(list[i].id).length) { target = list[i]; break; }
+    step.reached = Math.max(step.reached, secIndex(target.id));
+    showStep(target.id);
+  }
+  function unmark(id) {
+    var n = document.getElementById("f-" + id); if (!n) return;
+    n.classList.remove("error");
+    var m = n.querySelector(".errmsg.js"); if (m) m.remove();
+  }
 
   /* ---------- save and resume ---------- */
 
@@ -568,49 +980,246 @@
     btn.type = "button";
     var msg = el("span", "secmsg");
     msg.setAttribute("aria-live", "polite");
-    row.appendChild(btn); row.appendChild(msg);
-    secUI[sec.id] = { btn: btn, msg: msg };
+    // The outcome of a save gets its own element. `msg` belongs to
+    // updateSaveUI, which keeps the completeness status there ("3 of 7
+    // required still open"). Sharing one element meant a successful save
+    // read as a six-character text change, and a failed save showed up
+    // nowhere at all — the error went to the global bar, far up the page,
+    // so the button looked inert either way. Two jobs, two elements.
+    var flash = el("span", "secflash");
+    flash.setAttribute("role", "status");
+    flash.setAttribute("aria-live", "polite");
+    flash.hidden = true;
+    row.appendChild(btn); row.appendChild(msg); row.appendChild(flash);
+    secUI[sec.id] = { btn: btn, msg: msg, flash: flash, row: row };
     btn.addEventListener("click", function () { saveDraft(sec.id); });
     return row;
   }
 
-  function buildSaveBar() {
-    var root = el("div", "savebar");
-    var top = el("div", "savetop");
-    var txt = el("p", "savetext", "Save as you go. You can finish later, from any device, with your code.");
-    var btn = el("button", "savebtn primary", "Save and get my code");
-    btn.type = "button";
-    top.appendChild(txt); top.appendChild(btn);
-    var codeRow = el("div", "coderow"); codeRow.hidden = true;
-    var codeLab = el("span", null, "Your code:");
-    var codeEl = el("strong", "codeval");
-    var copy = el("button", "savebtn", "Copy"); copy.type = "button";
-    var codeNote = el("span", "codenote", "Keep it somewhere safe: anyone with this code can open your draft. Attached files are not saved, so you will attach them again.");
-    codeRow.appendChild(codeLab); codeRow.appendChild(codeEl); codeRow.appendChild(copy); codeRow.appendChild(codeNote);
-    var resume = el("div", "resumerow");
-    var rl = el("label", null, "Already saved? Enter your code to continue:");
-    var ri = el("input"); ri.type = "text"; ri.placeholder = "GA27-XXX-XXX-XXX"; ri.autocomplete = "off";
-    ri.setAttribute("aria-label", "Saved application code"); ri.maxLength = 20;
-    var rb = el("button", "savebtn", "Resume"); rb.type = "button";
-    resume.appendChild(rl); resume.appendChild(ri); resume.appendChild(rb);
-    var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
-    root.appendChild(top); root.appendChild(codeRow); root.appendChild(resume); root.appendChild(msg);
+  // Save feedback next to the button the person actually pressed.
+  function flashSection(secId, kind, text) {
+    var ui = secId === "__end" ? { flash: endFlash } : (secId && secUI[secId]);
+    if (!ui || !ui.flash) return;
+    ui.flash.hidden = !text;
+    ui.flash.className = "secflash" + (kind ? " " + kind : "");
+    ui.flash.textContent = text || "";
+  }
 
-    btn.addEventListener("click", function () { saveDraft(null); });
-    saveBtm.addEventListener("click", function () { saveDraft(null); });
+  /* ---------- the save experience ----------
+     One moment at a time, depending on what the person is doing:
+
+       arriving        a reassuring line, and a quiet "Have a code?" link —
+                       or "Welcome back" when this browser remembers a draft
+       first save      a card opens next to the button they pressed and asks
+                       where to send the code: the moment the email makes sense
+       code issued     the code, large, with Copy, in that same place
+       later saves     only "Saved at 14:32 ✓"; nothing asks again
+       anytime after   a compact chip with the code at the top of the form
+
+     No modals: the form lives in an auto-height iframe, so a fixed overlay
+     opens at the top of the content, nowhere near the viewport.
+
+     The email field is bound to D1's email part — one value, V.D1__email,
+     two views (docs/email-the-code.md). If D1 already has a valid email,
+     the first save does not ask again. */
+
+  function buildSaveBar() {
+    var root = el("div", "door");
+
+    // arriving, nothing remembered
+    var fresh = el("div", "door-fresh");
+    fresh.appendChild(el("p", "door-lead",
+      "You don't have to finish in one sitting. Save at the end of any section and come back with your code, from any device."));
+    var haveCode = el("button", "linkbtn", "Have a code? Continue your application");
+    haveCode.type = "button";
+    fresh.appendChild(haveCode);
+
+    // continue with a code
+    var resume = el("div", "door-resume"); resume.hidden = true;
+    var rl = el("label", null, "Your code"); rl.htmlFor = "ga27-resume";
+    var ri = el("input"); ri.type = "text"; ri.id = "ga27-resume"; ri.placeholder = "GA27-XXX-XXX-XXX";
+    ri.autocomplete = "off"; ri.maxLength = 20; ri.spellcheck = false;
+    var rb = el("button", "savebtn primary", "Continue"); rb.type = "button";
+    resume.appendChild(rl); resume.appendChild(ri); resume.appendChild(rb);
+
+    // arriving, this browser remembers a draft
+    var back = el("div", "door-back"); back.hidden = true;
+    back.appendChild(el("p", "door-title", "Welcome back"));
+    var backTxt = el("p", "door-lead", "");
+    back.appendChild(backTxt);
+    var backRow = el("div", "door-actions");
+    var backGo = el("button", "savebtn primary", "Continue where I left off"); backGo.type = "button";
+    var backNew = el("button", "linkbtn", "Start a new application"); backNew.type = "button";
+    backRow.appendChild(backGo); backRow.appendChild(backNew); back.appendChild(backRow);
+
+    // a draft is active: the code stays at hand
+    var chip = el("div", "door-chip"); chip.hidden = true;
+    chip.appendChild(el("span", "chip-lab", "Your code"));
+    var chipCode = el("strong", "codeval");
+    var chipCopy = el("button", "savebtn small", "Copy"); chipCopy.type = "button";
+    var chipNote = el("span", "chip-note");
+    chip.appendChild(chipCode); chip.appendChild(chipCopy); chip.appendChild(chipNote);
+
+    var msg = el("div", "savemsg"); msg.setAttribute("role", "status"); msg.setAttribute("aria-live", "polite");
+    root.appendChild(fresh); root.appendChild(back); root.appendChild(chip);
+    root.appendChild(resume); root.appendChild(msg);
+
+    haveCode.addEventListener("click", function () {
+      resume.hidden = !resume.hidden;
+      if (!resume.hidden) ri.focus();
+    });
     rb.addEventListener("click", function () { resumeDraft(ri.value); });
     ri.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); resumeDraft(ri.value); } });
-    copy.addEventListener("click", function () {
-      var done = function () { copy.textContent = "Copied"; window.setTimeout(function () { copy.textContent = "Copy"; }, 1500); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
+    backGo.addEventListener("click", function () { resumeDraft(rememberedCode); });
+    backNew.addEventListener("click", function () {
+      rememberedCode = "";
+      try { localStorage.removeItem(LS_KEY); } catch (e) {}
+      say("", "");
+      renderDoor();
     });
-    return { root: root, msg: msg, codeRow: codeRow, codeEl: codeEl, input: ri };
+    chipCopy.addEventListener("click", function () { copyCode(chipCopy); });
+    saveBtm.addEventListener("click", function () { saveDraft("__end"); });
+
+    return {
+      root: root, msg: msg, input: ri,
+      fresh: fresh, resume: resume, back: back, backTxt: backTxt,
+      chip: chip, chipCode: chipCode, chipNote: chipNote,
+      email: null      // set by buildSaveCard
+    };
+  }
+
+  // The card that opens at the first save. One element, moved into
+  // whichever footer was clicked.
+  function buildSaveCard() {
+    var card = el("div", "savecard"); card.hidden = true;
+    card.appendChild(el("p", "card-title", "Save your progress"));
+    var lead = el("p", "card-lead", "");
+    card.appendChild(lead);
+    var lab = el("label", null, "Your email"); lab.htmlFor = "ga27-save-email";
+    var mi = el("input"); mi.type = "email"; mi.id = "ga27-save-email";
+    mi.autocomplete = "email"; mi.placeholder = "you@example.org"; mi.maxLength = 200;
+    var hint = el("span", "card-hint", "This is also your contact email in section D. Change it in either place.");
+    var err = el("span", "card-err"); err.hidden = true;
+    var acts = el("div", "door-actions");
+    var go = el("button", "savebtn primary", ""); go.type = "button";
+    var skip = el("button", "linkbtn", "Save without email"); skip.type = "button";
+    acts.appendChild(go); acts.appendChild(skip);
+    card.appendChild(lab); card.appendChild(mi); card.appendChild(hint); card.appendChild(err); card.appendChild(acts);
+
+    var guard = guardEmail(mi, err);
+    mi.addEventListener("input", function () { setSaveEmail(mi.value); });
+    function confirm() {
+      if (!guard.check()) { mi.focus(); return; }
+      card.hidden = true;
+      saveDraft(card.dataset.host, { confirmed: true });
+    }
+    go.addEventListener("click", confirm);
+    mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); confirm(); } });
+    skip.addEventListener("click", function () {
+      card.hidden = true;
+      saveDraft(card.dataset.host, { confirmed: true });
+    });
+    return { card: card, lead: lead, email: mi, go: go, err: err };
+  }
+
+  // The card that shows the code right after it is issued.
+  function buildCodeCard() {
+    var card = el("div", "codecard"); card.hidden = true;
+    card.setAttribute("role", "status");
+    card.appendChild(el("p", "card-title", "Your progress is saved"));
+    var row = el("div", "code-big");
+    var code = el("strong", "codeval big");
+    var copy = el("button", "savebtn", "Copy code"); copy.type = "button";
+    row.appendChild(code); row.appendChild(copy);
+    var note = el("p", "card-lead", "");
+    var files = el("p", "card-hint", "Attached files are not saved with your progress — you will attach them again before submitting.");
+    var done = el("button", "linkbtn", "Done"); done.type = "button";
+    card.appendChild(row); card.appendChild(note); card.appendChild(files); card.appendChild(done);
+    copy.addEventListener("click", function () { copyCode(copy); });
+    done.addEventListener("click", function () { card.hidden = true; });
+    return { card: card, code: code, note: note };
+  }
+
+  function hostFor(id) {
+    if (id === "__end") return endHost;
+    return secUI[id] && secUI[id].row;
+  }
+  function openSaveCard(id) {
+    var host = hostFor(id); if (!host) return;
+    codeCard.card.hidden = true;
+    saveCard.card.dataset.host = id;
+    saveCard.lead.textContent = CFG.emailCodes === true
+      ? "We'll email you a code so you can continue from any device."
+      : "You'll get a code to continue from any device.";
+    saveCard.go.textContent = CFG.emailCodes === true ? "Save and email my code" : "Save and get my code";
+    saveCard.err.hidden = true;
+    host.appendChild(saveCard.card);
+    saveCard.card.hidden = false;
+    syncSaveEmail();
+    saveCard.email.focus();
+  }
+  function showCodeCard(id) {
+    var host = hostFor(id); if (!host) return;
+    codeCard.code.textContent = draftCode;
+    codeCard.note.textContent = codeNoteText();
+    host.appendChild(codeCard.card);
+    codeCard.card.hidden = false;
+  }
+  function copyCode(btn) {
+    var label = btn.textContent;
+    var done = function () { btn.textContent = "Copied ✓"; window.setTimeout(function () { btn.textContent = label; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(draftCode).then(done, function () {});
+  }
+
+  // The top of the form shows exactly one of: the fresh line, welcome back,
+  // or the code chip.
+  var rememberedCode = "";
+  function renderDoor() {
+    var hasCode = !!draftCode, hasMemory = !hasCode && !!rememberedCode;
+    savebar.chip.hidden = !hasCode;
+    savebar.back.hidden = !hasMemory;
+    savebar.fresh.hidden = hasCode || hasMemory;
+    if (hasCode) {
+      savebar.resume.hidden = true;
+      savebar.chipCode.textContent = draftCode;
+      savebar.chipNote.textContent = codeWasEmailed()
+        ? "Sent to " + V.D1__email
+        : "Not emailed — keep it somewhere safe";
+    }
+    if (hasMemory) savebar.backTxt.textContent =
+      "You have an application in progress on this device (" + rememberedCode + ").";
+  }
+
+  // Write the bound email through D1's own input, as if typed there, so the
+  // composite handler rebuilds V.D1, V.D1__email and the section state the
+  // same way it does for typing. One write path, one value.
+  function d1EmailInput() { return document.querySelector("#f-D1 input[type=email]"); }
+  function setSaveEmail(value) {
+    var d = d1EmailInput();
+    if (!d || d.value === value) return;
+    d.value = value;
+    d.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function syncSaveEmail() {
+    if (!savebar || !savebar.email) return;
+    var v = V.D1__email || "";
+    // Never overwrite the field while the person is typing in it.
+    if (savebar.email !== document.activeElement && savebar.email.value !== v) savebar.email.value = v;
+  }
+  // Whether the code was actually emailed. CFG.emailCodes stays false until
+  // the server sends mail; until then the honest message is "write it down",
+  // never "we sent it" (commit 0effcb5 removed one such promise already).
+  function codeWasEmailed() { return CFG.emailCodes === true && validEmail(V.D1__email); }
+  function codeNoteText() {
+    return codeWasEmailed()
+      ? "We sent it to " + V.D1__email + ". Keep it anyway: anyone with this code can open your application."
+      : "Copy it or write it down now. There is no way to recover a lost code, and anyone with it can open your application.";
   }
 
   function say(kind, text) { savebar.msg.className = "savemsg" + (kind ? " " + kind : ""); savebar.msg.textContent = text || ""; }
   function showCode() {
-    savebar.codeRow.hidden = !draftCode; savebar.codeEl.textContent = draftCode;
     try { if (draftCode) localStorage.setItem(LS_KEY, draftCode); else localStorage.removeItem(LS_KEY); } catch (e) {}
+    renderDoor();
   }
 
   function draftControls(wrap) {
@@ -632,7 +1241,7 @@
     var files = {};
     Object.keys(FILES).forEach(function (id) { files[id] = FILES[id].name; });
     Object.keys(savedFiles).forEach(function (id) { if (!files[id] && !FILES[id]) files[id] = savedFiles[id]; });
-    return { v: 1, fields: fields, files: files, g2touched: !!V.__g2touched, email: V.D1__email || "" };
+    return { v: 1, fields: fields, files: files, email: V.D1__email || "" };
   }
 
   function fire(n, t) { n.dispatchEvent(new Event(t, { bubbles: true })); }
@@ -651,7 +1260,6 @@
           else { c.value = x; fire(c, "input"); fire(c, "change"); }
         });
       });
-      V.__g2touched = !!state.g2touched;
     } finally { restoring = false; }
     savedFiles = state.files || {};
     Object.keys(savedFiles).forEach(function (id) {
@@ -662,10 +1270,24 @@
     refresh();
   }
 
-  function saveDraft(secId) {
+  function saveDraft(secId, opts) {
     if (busySaving) return;
-    if (!CFG.endpoint) { say("bad", "Preview build: saving is not connected."); return; }
-    busySaving = true; say("", "Saving…");
+    var firstSave = !draftCode, codeBefore = draftCode;
+    // Every message goes to both places: the global bar, and — when a
+    // section button was the one pressed — right next to that button.
+    // Nothing about saving should be invisible from where you clicked.
+    function both(kind, text) { say(kind, text); flashSection(secId, kind, text); }
+    if (!CFG.endpoint) {
+      both("bad", "Saving is not connected in this preview build. Your answers are not stored.");
+      return;
+    }
+    // The first save is when a code is issued, so it is the moment to ask
+    // where to send it — unless D1 already has a valid email.
+    if (firstSave && !(opts && opts.confirmed) && !validEmail(V.D1__email)) {
+      openSaveCard(secId);
+      return;
+    }
+    busySaving = true; flashSection(secId, "", "Saving…");
     var ids = SECTIONS.map(function (s) { return s.id; });
     postJSON(CFG.endpoint + "/draft/save", { code: draftCode || undefined, state: snapshot(), saved_sections: ids })
       .catch(function (err) {
@@ -679,10 +1301,15 @@
         draftCode = res.code; showCode();
         ids.forEach(function (id) { SAVED[id] = true; });
         var t = new Date(), hh = ("0" + t.getHours()).slice(-2) + ":" + ("0" + t.getMinutes()).slice(-2);
-        say("ok", "Saved at " + hh + ". Your code is " + draftCode + ". Use it to continue later, from any device.");
+        say("", "");
+        // updateSaveUI rewrites secmsg, so the flash goes after it.
         updateSaveUI();
+        // A new code — first save, or the old one expired and the server
+        // issued another — must be shown, not just acknowledged.
+        if (draftCode !== codeBefore) { flashSection(secId, "", ""); showCodeCard(secId); }
+        else flashSection(secId, "ok", "Saved at " + hh + " ✓");
       })
-      .catch(function (err) { say("bad", "We could not save: " + err.message); })
+      .catch(function (err) { both("bad", "We could not save: " + err.message); })
       .then(function () { busySaving = false; });
   }
 
@@ -697,8 +1324,9 @@
         draftCode = res.code; showCode();
         (res.saved_sections || []).forEach(function (id) { SAVED[id] = true; });
         updateSaveUI();
+        rememberedCode = "";
         say("ok", "Your saved answers are back. Attach your files again before submitting.");
-        savebar.root.scrollIntoView({ behavior: "smooth", block: "start" });
+        resumeAtFirstOpen();
       })
       .catch(function (err) { say("bad", err.message); });
   }
@@ -723,7 +1351,14 @@
   function markDirty(e) {
     if (restoring) return;
     var sec = e.target && e.target.closest && e.target.closest("fieldset.sec");
-    if (sec) { delete SAVED[sec.id.replace("sec-", "")]; updateSaveUI(); }
+    if (sec) {
+      var sid = sec.id.replace("sec-", "");
+      delete SAVED[sid];
+      // The flash said "Saved at 14:32" — after an edit that is no longer
+      // true, and a stale confirmation is worse than none.
+      flashSection(sid, "", "");
+      updateSaveUI();
+    }
   }
 
   /* ---------- submit ---------- */
@@ -774,11 +1409,16 @@
   sub.addEventListener("click", function () {
     clearErrors(); setStatus("", "");
     var miss = missingIds(), probs = problems();
-    miss.forEach(function (id) { mark(id, "This question is required."); });
+    miss.forEach(function (id) { mark(id, missingMessage(F.filter(function (x) { return x.id === id; })[0])); });
     Object.keys(probs).forEach(function (id) { if (miss.indexOf(id) === -1) mark(id, probs[id]); });
     var bad = F.filter(function (f) { return miss.indexOf(f.id) !== -1 || probs[f.id]; });
     if (bad.length) {
-      setStatus("bad", bad.length + " question" + (bad.length === 1 ? " needs" : "s need") + " your attention. The first one is " + bad[0].id + ".");
+      var where = bad[0].s, txt = bad.length + " question" + (bad.length === 1 ? " needs" : "s need") +
+        " your attention. The first one is " + bad[0].id + ".";
+      setStatus("bad", txt);
+      // The first problem may be in an earlier section; open it, say so
+      // there, and take the person to the question.
+      if (where !== step.cur) { showStep(where, { scroll: false }); navSay(where, "bad", txt); }
       document.getElementById("f-" + bad[0].id).scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -820,7 +1460,9 @@
 
   try {
     var remembered = localStorage.getItem(LS_KEY);
-    if (remembered) { savebar.input.value = remembered; say("", "You have a saved draft on this device. Press Resume to continue it."); }
+    if (remembered) rememberedCode = remembered;
   } catch (e) {}
+  renderDoor();
   refresh();
+  showStep(steps()[0].id, { scroll: false });
 })();

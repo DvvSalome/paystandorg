@@ -1,0 +1,71 @@
+name: tests
+
+# The question definitions exist in three copies — the browser's, the Edge
+# Function's, and the built bundle — and they have already drifted once. A
+# test that only runs when someone remembers to run it would not have caught
+# it, so it runs here on every push and pull request.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Question definitions — copies agree, eligibility path open
+        run: node tests/questions.test.mjs
+
+      - name: Drafts — save and resume
+        run: node tests/drafts.test.mjs
+
+      - name: Email — one rule in the form and the server
+        run: node tests/email.test.mjs
+
+      - name: Multi-part questions — every part, in the form and the server
+        run: node tests/completeness.test.mjs
+
+      - name: Question map — form, Supabase view and pipeline agree
+        run: node tests/question_map.test.mjs
+
+      - name: Question labels — Eva's copy of each application uses current wording
+        run: node tests/question_labels.test.mjs
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # These two guard patches that are applied by hand on Eva's server, so
+      # the only place their behaviour is pinned is here.
+      - name: match_grantee — accented names do not collide
+        run: python3 supabase/eva_patches/test_match_grantee_accents.py
+
+      - name: C1 documents — Supabase Storage download
+        run: python3 supabase/eva_patches/test_pipeline_c1_storage.py
+
+      # Eva's pipeline. These ran only by hand until 2026-11-13; the import
+      # guard goes first because the other suites load functions by AST and
+      # cannot see a module that fails to import.
+      - name: Eva pipeline — imports, form contract, watermark and run lock
+        working-directory: eva
+        run: |
+          python3 test_import_guard.py
+          python3 test_form_contract.py
+          python3 test_watermark_lock.py
+          python3 test_funciones_base.py
+          python3 test_form_options.py   # needs node and site/assets/questions.js
+          python3 test_documentos.py
+          python3 test_sync_sheet_headers.py
+          python3 test_review_board.py   # needs node and site/assets/questions.js
+          python3 scoring_verify.py --fixtures
+          python3 test_crosscheck.py

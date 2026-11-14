@@ -6,9 +6,25 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 globalThis.window = globalThis.window || {};
 
 // ---- questions (from site/assets/questions.js) ----
-/* Grant Application 2027 — question definitions (v3, 61 questions).
+/* Grant Application 2027 — question definitions (v3, 59 questions).
    Source: Ivan's Apps Script preview, 10 Nov 2026. Edit here to change questions;
-   the form engine in form.js does not hard-code any question. */
+   the form engine in form.js does not hard-code any question.
+
+   59 since 2026-11-13, when A4 (amount requested, asked in section A) was
+   removed: it asked the same number as G2, and existed only for a
+   measurement tier the form never applied. G2 is the one amount.
+
+   Two other lists say 60, each counting something that is not a question:
+     - the form specification lists 60 numbered items because it includes
+       G6 (cost per participant), computed from G2 / E5 and never asked;
+     - QUESTION_MAP in eva/intake_pipeline.py has 60 entries because it
+       includes Timestamp.
+   tests/question_map.test.mjs keeps this file, supabase/eva_question_map.json
+   and QUESTION_MAP naming the same questions.
+
+   Nobody sees all 59: 13 are conditional. An individual applying for the
+   first time sees 48; an organisation applying for the first time, 52; a
+   2026 renewal, 57. */
 (function () {
   "use strict";
   var COUNTRIES = ["Afghanistan","Albania","Algeria","Angola","Argentina","Armenia","Australia","Austria","Bangladesh","Belgium","Benin","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Bulgaria","Burkina Faso","Burundi","Cambodia","Cameroon","Canada","Cape Verde","Central African Republic","Chad","Chile","Colombia","Comoros","Congo (DRC)","Congo (Republic)","Costa Rica","Côte d'Ivoire","Croatia","Cuba","Czechia","Denmark","Djibouti","Dominican Republic","Ecuador","Egypt","El Salvador","Eritrea","Estonia","Eswatini","Ethiopia","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Jamaica","Japan","Jordan","Kenya","Kosovo","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Lithuania","Madagascar","Malawi","Malaysia","Mali","Mauritania","Mexico","Moldova","Mongolia","Morocco","Mozambique","Myanmar","Namibia","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Macedonia","Norway","Pakistan","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Romania","Rwanda","Senegal","Serbia","Sierra Leone","Slovakia","Slovenia","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Trinidad and Tobago","Tunisia","Turkey","Uganda","Ukraine","United Kingdom","United States","Uruguay","Uzbekistan","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"];
@@ -16,7 +32,7 @@ globalThis.window = globalThis.window || {};
     { id: "0", title: "Before you apply",
       note: "Two short checklists. The first tells you which documents to gather; the second confirms you are eligible. Takes about two minutes." },
     { id: "A", title: "Tell us about you",
-      note: "Five questions about who is applying and how much you are requesting. Your answers here determine which of the later questions apply to you, so some sections will be shorter than others." },
+      note: "A few short questions about who is applying. Your answers here determine which of the later questions apply to you, so some sections will be shorter than others." },
     { id: "B", title: "Organization",
       note: "Your legal details, exactly as they appear on your registration document or identification. These carry through to the grant agreement if you are selected, so accuracy here saves time later." },
     { id: "C", title: "Documents",
@@ -50,9 +66,24 @@ globalThis.window = globalThis.window || {};
         "Project description, budget, timeline and milestone plan",
         "Contact details for the primary contact and the authorized representative"
       ] },
-    { id: "0.2", s: "0", type: "checks", req: "all",
+    // req is deliberately absent. It used to be "all", which contradicted
+    // three other places that expect an applicant to be able to proceed with
+    // an explanation:
+    //
+    //   · this field's own help text ("explain it in section K rather than
+    //     stopping here") — unreachable, because validation blocked at 3 of 4
+    //   · K2.showIf, which already appears when fewer than four are checked
+    //   · Eva's eligibility gate ("a 0.2 box is missing and K2 does not
+    //     explain it"), which the pipeline has been carrying unused
+    //
+    // Nothing is lost by relaxing it: K2 is required whenever fewer than four
+    // are checked, so every such application still arrives with a written
+    // reason, and Eva still routes it to manual review. What changes is that
+    // the applicant can finish and say why, instead of hitting a wall the
+    // form told them would not be there.
+    { id: "0.2", s: "0", type: "checks",
       label: "Eligibility checklist",
-      help: "All four must be checked. If you cannot check one, explain it in section K rather than stopping here.",
+      help: "All four should be checked. If you cannot check one, you can still continue — you will be asked to explain it in section K.",
       options: [
         "Our work serves people facing economic barriers",
         "We have a charitable purpose — no political campaigning or private benefit",
@@ -75,9 +106,6 @@ globalThis.window = globalThis.window || {};
     { id: "A3", s: "A", type: "radio", req: true,
       label: "Have you received a grant from Paystand.org before?",
       options: ["No", "Yes, in 2026", "Yes, before 2026"] },
-    { id: "A4", s: "A", type: "number", req: true, min: 1, prefix: "USD",
-      label: "How much are you requesting from Paystand.org?",
-      help: "An approximate figure is fine \u2014 you can refine it in the budget section." },
 
     
     { id: "B1", s: "B", type: "text", req: true,
@@ -225,7 +253,7 @@ globalThis.window = globalThis.window || {};
       label: "Total project budget" },
     { id: "G2", s: "G", type: "number", req: true, prefix: "USD", min: 1,
       label: "Amount requested from Paystand.org",
-      help: "Pre-filled from A4. Adjust it if your budget work changed the figure — this is the authoritative number." },
+      help: "The amount you are asking Paystand.org for. It cannot be larger than the total project budget (G1)." },
     { id: "G3", s: "G", type: "funders", req: true,
       label: "Are you applying to other funders for this same project?" },
     { id: "G4", s: "G", type: "budget", req: true,
@@ -316,13 +344,100 @@ globalThis.window = globalThis.window || {};
     { id: "K5", s: "K", type: "submitter", req: true,
       label: "Name of the person submitting, and date" }
   ];
-  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F };
+
+  /* What a complete answer is, for questions with more than one part.
+
+     Before this, a question counted as answered as soon as its combined value
+     was not empty — so a D1 with only a name, an E1 with only a title, a G3
+     of "Yes" with no funder named, or an E10 with one cell typed all passed
+     as complete. The help text of each question says what it needs; these
+     rules say the same thing in code.
+
+     It lives here, in questions.js, because this is the one file both the
+     browser and the Edge Function load (tests/questions.test.mjs keeps the
+     two copies identical). The form uses it to block moving on and to say
+     what is missing; the server uses it to refuse an incomplete submission.
+
+     v        the answers, including the "ID__part" sub-values
+     hasFile  function(id) -> true when a file is attached to that question
+     returns  the list of missing parts, in plain words; empty = complete */
+  function missingParts(f, v, hasFile) {
+    var t = function (x) { return typeof x === "string" ? x.trim() : (x == null ? "" : String(x)); };
+    var miss = [];
+    switch (f.type) {
+      case "composite":
+        f.parts.forEach(function (p) {
+          if (!p.opt && !t(v[f.id + "__" + p.k])) miss.push(p.ph.toLowerCase());
+        });
+        break;
+      case "titlesummary":
+        if (!t(v[f.id + "__title"])) miss.push("project title");
+        if (!t(v[f.id + "__summary"])) miss.push("summary");
+        break;
+      case "datepair":
+        if (!t(v[f.id + "__start"])) miss.push("start date");
+        if (!t(v[f.id + "__end"])) miss.push("end date");
+        break;
+      case "valuedate":
+        if (!t(v[f.id + "__value"])) miss.push("figure");
+        if (!t(v[f.id + "__date"])) miss.push("date");
+        break;
+      case "baseline":
+        if (v[f.id + "__mode"] === "plan") { if (!t(v[f.id + "__plan"])) miss.push("how and when you will collect it"); }
+        else {
+          if (!t(v[f.id + "__value"])) miss.push("figure today");
+          if (!t(v[f.id + "__date"])) miss.push("date measured");
+        }
+        break;
+      case "milestones": {
+        // "Three milestones. Each needs a target date and the evidence."
+        var rows = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        for (var i = 0; i < 3; i++) {
+          var r = rows[i] || {}, need = [];
+          if (!t(r.milestone)) need.push("milestone");
+          if (!t(r.date)) need.push("target date");
+          if (!t(r.evidence)) need.push("evidence");
+          if (need.length) miss.push("milestone " + (i + 1) + ": " + need.join(", "));
+        }
+        break;
+      }
+      case "funders": {
+        var yn = v[f.id + "__yn"];
+        if (!yn) { miss.push("yes or no"); break; }
+        if (yn !== "Yes") break;
+        var fr = Array.isArray(v[f.id + "__rows"]) ? v[f.id + "__rows"] : [];
+        var complete = 0;
+        fr.forEach(function (r, i) {
+          var started = t(r.funder) || t(r.amount) || t(r.status);
+          if (!started) return;
+          var need = [];
+          if (!t(r.funder)) need.push("funder");
+          if (!t(r.amount)) need.push("amount");
+          if (!t(r.status)) need.push("status");
+          if (need.length) miss.push("funder " + (i + 1) + ": " + need.join(", "));
+          else complete++;
+        });
+        if (!complete && !miss.length) miss.push("at least one funder, with amount and status");
+        break;
+      }
+      case "safeguard":
+        // "Upload your policy, or confirm one will be in place before
+        //  funding, and name the person responsible."
+        if (!(hasFile && hasFile(f.id)) && !v[f.id + "__committed"]) miss.push("the policy file, or confirm one will be in place");
+        if (!t(v[f.id + "__person"])) miss.push("name of the person responsible");
+        break;
+    }
+    return miss;
+  }
+
+  window.GA27 = { COUNTRIES: COUNTRIES, SECTIONS: SECTIONS, FIELDS: F, missingParts: missingParts };
 })();
 
 // ---- validation (from supabase/functions/_shared/validate.js) ----
 // Server-side validation for a Grant Application 2027 submission.
 // Pure JS (no Deno or Node APIs) so it runs in the Edge Function and in node tests.
 // Never trust the browser: every rule the form enforces is re-checked here.
+
 
 const FILE_QUESTIONS = ["C1", "C2", "I2", "J3"];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -369,6 +484,10 @@ function validate(G, answers, files) {
   const v = answers;
   const st = deriveState(v);
   const visible = (f) => { if (!f.showIf) return true; try { return !!f.showIf(v, st); } catch { return true; } };
+  // Files declared in this submission, for questions whose completeness
+  // depends on one (I2: a policy file OR a commitment, plus a named person).
+  const declared = new Set((files || []).map((x) => x && x.question));
+  const hasFile = (id) => declared.has(id);
 
   for (const f of G.FIELDS) {
     if (!visible(f)) continue;
@@ -379,19 +498,24 @@ function validate(G, answers, files) {
       else if (typeof f.req === "number") ok = Array.isArray(val) && val.length >= f.req;
       else ok = typeof val === "string" ? val.trim() !== "" : !!val;
       if (!ok) { errors[f.id] = "required"; continue; }
+      // A non-empty combined value is not a complete answer for a question
+      // with parts. Same rule as the form: questions.js, missingParts.
+      const parts = G.missingParts ? G.missingParts(f, v, hasFile) : [];
+      if (parts.length) { errors[f.id] = "incomplete: " + parts.join("; "); continue; }
     }
     if (val == null || val === "") continue;
     if (f.options && (f.type === "radio") && !f.options.includes(val)) errors[f.id] = "invalid option";
     if (f.options && f.type === "checks" && Array.isArray(val) && !val.every((x) => f.options.includes(x))) errors[f.id] = "invalid option";
     if (f.type === "country" && !G.COUNTRIES.includes(val)) errors[f.id] = "unknown country";
     if (f.type === "number" && (num(val) == null || num(val) < (f.min != null ? f.min : 0))) errors[f.id] = "invalid number";
-    if (f.type === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) errors[f.id] = "invalid email";
+    if (f.type === "email" && !isEmail(val)) errors[f.id] = "invalid email";
     if (f.maxWords) {
       const text = v[f.id + "__summary"] != null ? v[f.id + "__summary"] : val;
       if (words(text) > f.maxWords) errors[f.id] = "too long";
     }
   }
-  if (v.D1__email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D1__email && !isEmail(v.D1__email)) errors.D1 = "invalid email";
+  if (v.D3__email && !isEmail(v.D3__email)) errors.D3 = "invalid email";
   const dp = v.E2__months; if (v.E2 && !(dp > 0)) errors.E2 = "end date must be after start";
 
   const g1 = num(v.G1), g2 = num(v.G2);
@@ -434,6 +558,20 @@ function sheetSafe(s) {
 const CODE_RE = /^GA27-[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{3}$/;
 const ALPHABET = "ACDEFGHJKLMNPQRTUVWXY34789";      // no 0/O, 1/I/L, 2/Z, 5/S, 6/G, 8/B look-alikes
 const MAX_STATE_CHARS = 200_000;
+
+// The one email rule. The browser (site/assets/form.js) carries an identical
+// copy because it cannot import this file; tests/email.test.mjs fails if the
+// two drift. Before this there were three rules: the form's submit check
+// required a dot, the save card did not ("ana@x" passed), and the server
+// checked nothing at all — so a direct API call could store "hola" as the
+// contact address.
+//   local part: no spaces, no @
+//   domain: labels without spaces, @ or empty parts, at least one dot,
+//           ending in a label of two or more characters
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+function isEmail(x) {
+  return typeof x === "string" && x.trim().length <= 200 && EMAIL_RE.test(x.trim());
+}
 const MAX_AGE_DAYS = 60;
 
 function makeCode(randomBytes) {
@@ -462,7 +600,7 @@ async function saveDraft(store, body, ipHash, randomBytes) {
   if (!state) return { status: 422, body: { error: "Nothing to save, or the form is too large." } };
   const sections = Array.isArray(body.saved_sections)
     ? body.saved_sections.filter((s) => typeof s === "string" && /^[A-Z0-9]{1,3}$/.test(s)).slice(0, 30) : [];
-  const email = typeof state.email === "string" && /^[^\s@]+@[^\s@]+$/.test(state.email) ? state.email.toLowerCase().slice(0, 200) : null;
+  const email = isEmail(state.email) ? state.email.trim().toLowerCase() : null;
 
   if (body.code) {
     const code = normalizeCode(body.code);
@@ -591,8 +729,21 @@ async function submit(req: Request) {
   const { errors, profile, route } = validate(G, answers, files);
   if (Object.keys(errors).length) return json(req, 422, { error: "Some answers need attention.", fields: errors });
 
-  const email = String(answers.D1__email || "").toLowerCase();
-  if (email && (await rateLimited("email:" + email, 3, 24 * 60))) {
+  // The contact email is required and must be a real address. The form
+  // blocks anything else, but this endpoint is public: without this check a
+  // direct request could submit with "hola" or nothing as the only way to
+  // reach the applicant.
+  const email = String(answers.D1__email || "").trim().toLowerCase();
+  if (!isEmail(email)) {
+    return json(req, 422, { error: "Some answers need attention.", fields: { D1: "Enter a valid email address." } });
+  }
+  // The other addresses on the form are optional, but when present they get
+  // the same rule: the signer (D3) and the copy address (D4).
+  const others: Record<string, string> = {};
+  if (answers.D3__email && !isEmail(String(answers.D3__email))) others.D3 = "Enter a valid email address for the signer.";
+  if (answers.D4 && !isEmail(String(answers.D4))) others.D4 = "Enter a valid email address.";
+  if (Object.keys(others).length) return json(req, 422, { error: "Some answers need attention.", fields: others });
+  if (await rateLimited("email:" + email, 3, 24 * 60)) {
     return json(req, 429, { error: "This email already submitted several applications today." });
   }
 

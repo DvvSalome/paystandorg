@@ -112,15 +112,6 @@ button.linkbtn { font: inherit; font-size: .95rem; background: none; border: 0; 
 .fielderr { display: block; margin-top: 6px; font-size: .9rem; color: #7a2412; }
 /* "Still needed: …" under a question answered only in part */
 .partnote { margin: 8px 0 0; font-size: .9rem; color: #7a2412; }
-/* MM/DD/YYYY date field with a calendar button (form.js, usDate) */
-.usdate { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.usdate input[type=text] { flex: 1 1 9em; min-width: 0; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-.usdate-btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
-  background: #fff; color: var(--ps-btn); border: 1px solid var(--ps-border); border-radius: 6px; cursor: pointer; }
-.usdate-btn:focus-visible { outline: 3px solid var(--ps-blue); outline-offset: 2px; }
-/* the browser's own picker: present so showPicker() can open it, never seen */
-.usdate-pick { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
-.usdate .fielderr { flex-basis: 100%; margin-top: 0; }
 input[aria-invalid="true"] { border-color: #b3401f !important; }
 .savecard label { font-weight: 600; margin-top: 4px; }
 .code-big { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 6px 0; }

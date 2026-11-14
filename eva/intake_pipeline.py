@@ -25,6 +25,7 @@ Configuration:
 """
 
 import argparse
+import fcntl
 import csv
 import io
 import json
@@ -579,11 +580,22 @@ def load_region_mapping():
         return json.load(f)
 
 
-def load_watermark():
-    wm_path = CACHE_DIR / "intake_watermark.json"
-    if wm_path.exists():
-        with open(wm_path) as f:
-            return json.load(f)
+# One watermark per environment. Until 2026-11-13 test and production shared
+# cache/intake_watermark.json while reading the same Supabase table, so a test
+# run moved the mark past real applications and production then never saw
+# them. Each environment now keeps its own file.
+ENVIRONMENTS = ("test", "production")
+WATERMARK_LEGACY = CACHE_DIR / "intake_watermark.json"
+
+
+def watermark_path(env):
+    if env not in ENVIRONMENTS:
+        # No default on purpose: a missing env must not fall back to a shared file.
+        raise ValueError(f"unknown environment for watermark: {env!r}")
+    return CACHE_DIR / f"intake_watermark.{env}.json"
+
+
+def _empty_watermark():
     return {
         "last_timestamp": None,
         "last_row": 0,
@@ -592,11 +604,75 @@ def load_watermark():
     }
 
 
-def save_watermark(wm):
-    wm_path = CACHE_DIR / "intake_watermark.json"
+def load_watermark(env):
+    wm_path = watermark_path(env)
+    if wm_path.exists():
+        with open(wm_path) as f:
+            return json.load(f)
+    # The shared file was only ever advanced by test runs (production has not
+    # run), so test inherits it. Production deliberately does NOT: inheriting
+    # it would skip every application a test run had already touched.
+    if env == "test" and WATERMARK_LEGACY.exists():
+        with open(WATERMARK_LEGACY) as f:
+            wm = json.load(f)
+        print(f"  Watermark: test inherits legacy {WATERMARK_LEGACY.name} "
+              f"(last_timestamp={wm.get('last_timestamp')})")
+        return wm
+    return _empty_watermark()
+
+
+def save_watermark(env, wm):
+    wm_path = watermark_path(env)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    with open(wm_path, 'w') as f:
+    # Write then rename, so a crash mid-write cannot leave a truncated file
+    # that the next run would fail to parse.
+    tmp = wm_path.with_name(wm_path.name + ".tmp")
+    with open(tmp, 'w') as f:
         json.dump(wm, f, indent=2)
+    os.replace(tmp, wm_path)
+
+
+# ─── Run lock ──────────────────────────────────────────────────────────────
+# Two overlapping runs (cron firing while a manual run is still going, or two
+# cron ticks when a run is slow) would both read the same watermark, mint
+# the same IDs and write the same rows twice. One lock for both environments:
+# they share the grantee registry and the Drive folders.
+
+RUN_LOCK_PATH = CACHE_DIR / "intake_pipeline.lock"
+EXIT_LOCKED = 75  # EX_TEMPFAIL: "try again later", not a failure
+
+
+class PipelineLocked(Exception):
+    pass
+
+
+def acquire_run_lock(path=None, info=None):
+    """
+    Take the run lock or raise PipelineLocked with who holds it.
+
+    flock is released by the kernel when the process exits, crashes or is
+    killed, so there is no stale lock to clean up by hand. The caller must
+    keep the returned file object alive for the whole run.
+    """
+    path = Path(path or RUN_LOCK_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(path, "a+")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fh.seek(0)
+        holder = fh.read().strip() or "unknown holder"
+        fh.close()
+        raise PipelineLocked(holder)
+    fh.seek(0)
+    fh.truncate()
+    fh.write(json.dumps({
+        "pid": os.getpid(),
+        "started": datetime.now(timezone.utc).isoformat(),
+        **(info or {}),
+    }))
+    fh.flush()
+    return fh
 
 
 # ─── P0 Guardrails: Slack notification + Idempotency ───────────────────────
@@ -2071,7 +2147,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
     """
     start_time = time.time()
     sheet_id = config['active']['intake_sheet_id']
-    wm = load_watermark()
+    wm = load_watermark(config['active_env'])
     wm_before = wm['last_timestamp']
 
     # Load grantee registry and seguimiento data
@@ -4195,6 +4271,9 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
 
     # P1.3: Schema validation — verify headers before processing
     write_errors = []
+    # Errors that mean result rows may not be in the sheet. Dashboard and
+    # Process Log errors are not in here: the results themselves landed.
+    data_errors = []
     schema_errors = validate_sheet_schema(sheets_api, sheet_id)
     if schema_errors:
         for err in schema_errors:
@@ -4221,6 +4300,7 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
             if not header_data:
                 print(f"  [{tab_name}] Could not read headers, skipping")
                 write_errors.append(f"{tab_name}: no headers")
+                data_errors.append(f"{tab_name}: no headers")
                 continue
             tab_headers = header_data[0]
 
@@ -4235,12 +4315,14 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
         except Exception as e:
             print(f"  [{tab_name}] PREP ERROR: {type(e).__name__}: {e}")
             write_errors.append(f"{tab_name}: prep: {type(e).__name__}: {str(e)[:100]}")
+            data_errors.append(f"{tab_name}: prep")
 
     # Atomic write: all tabs in one batchUpdate call
     if tab_write_list:
         success_count, atomic_errors = atomic_batch_write(sheets_api, sheet_id, tab_write_list)
         if atomic_errors:
             write_errors.extend(atomic_errors)
+            data_errors.extend(atomic_errors)
         for tab_name, values, start_row in tab_write_list:
             print(f"  [{tab_name}] Wrote {len(values)} rows (row {start_row})")
         print(f"  [ATOMIC] {success_count}/{len(tab_write_list)} tabs written successfully")
@@ -4255,7 +4337,6 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
     # Write Process Log
     log_rows = []
     log_seq = 1
-    wm = load_watermark()
     for log_entry in all_logs:
         log_row = [
             f"LOG-{run_id}-{log_seq:03d}",  # Log_ID
@@ -4292,14 +4373,23 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
             print(f"  [{TAB_LOG}] WRITE ERROR: {type(e).__name__}: {e}")
             write_errors.append(f"{TAB_LOG}: {type(e).__name__}: {str(e)[:100]}")
 
-    # Update watermark after successful write
-    if applications:
-        wm = load_watermark()
+    # Update watermark only if the results are in the sheet. Until 2026-11-13
+    # it advanced whenever there were applications, so a failed write moved
+    # the mark past them and they were never processed again. Holding it back
+    # is safe: on the next run the Cleaned-tab idempotency check skips the
+    # ones that did land.
+    env = config['active_env']
+    if applications and data_errors:
+        print(f"  Watermark NOT advanced ({env}): {len(data_errors)} write error(s); "
+              f"these applications will be retried next run")
+        write_errors.append("watermark held back: results not fully written")
+    elif applications:
+        wm = load_watermark(env)
         last_app = applications[-1]
         wm['last_timestamp'] = last_app['timestamp']
         wm['last_run_id'] = run_id
-        save_watermark(wm)
-        print(f"  Watermark updated: {wm['last_timestamp']}")
+        save_watermark(env, wm)
+        print(f"  Watermark updated ({env}): {wm['last_timestamp']}")
 
     duration = round(time.time() - start_time, 2)
     print(f"  Duration: {duration}s")
@@ -4440,6 +4530,7 @@ def run_pipeline(args):
     # Set active environment
     env = args.environment or 'test'
     config['active'] = config[env]
+    config['active_env'] = env
 
     sheets_api = get_sheets_service()
     drive_api = get_drive_service()
@@ -4634,5 +4725,16 @@ if __name__ == '__main__':
     if not args.run_all and not args.step:
         parser.print_help()
         sys.exit(1)
+
+    try:
+        _run_lock = acquire_run_lock(info={
+            "environment": args.environment,
+            "trigger": args.trigger_type,
+            "by": args.triggered_by,
+        })
+    except PipelineLocked as held:
+        print(f"Another intake run is in progress ({held}). Not starting; "
+              f"the next scheduled run will pick up anything new.")
+        sys.exit(EXIT_LOCKED)
 
     run_pipeline(args)

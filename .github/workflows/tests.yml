@@ -49,3 +49,15 @@ jobs:
 
       - name: C1 documents — Supabase Storage download
         run: python3 supabase/eva_patches/test_pipeline_c1_storage.py
+
+      # Eva's pipeline. These ran only by hand until 2026-11-13; the import
+      # guard goes first because the other suites load functions by AST and
+      # cannot see a module that fails to import.
+      - name: Eva pipeline — imports, form contract, watermark and run lock
+        working-directory: eva
+        run: |
+          python3 test_import_guard.py
+          python3 test_form_contract.py
+          python3 test_watermark_lock.py
+          python3 scoring_verify.py --fixtures
+          python3 test_crosscheck.py

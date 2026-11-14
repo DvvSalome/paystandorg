@@ -25,5 +25,6 @@ Form (Vercel) → Edge Function `intake` → Supabase (`applications`, `applicat
 - Remove `site/assets/demo.js` and its loader; set `ALLOWED_ORIGINS` in Supabase to the final origin; remove `noindex` once the page is on the real domain; take Vercel Authentication off.
 
 ## Details
+- Current status and what is pending: `docs/status.md`
 - Integration with Eva, decisions and open questions: `docs/eva-integration.md`
 - Supabase setup: `docs/supabase-setup.md`. Submission API contract: `docs/submission-api.md`. Brand palette: `docs/brand.md`.

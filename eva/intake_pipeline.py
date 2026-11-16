@@ -817,12 +817,32 @@ def acquire_run_lock(path=None, info=None):
 
 # ─── P0 Guardrails: Slack notification + Idempotency ───────────────────────
 
+# Which environment this run is, for notifications. Set by run_pipeline.
+# Until 2026-11-16 a test run posted to #foundation-ops like production; tests
+# were kept quiet only by putting a fake `openclaw` first on the PATH.
+NOTIFY_ENV = None
+
+
+def slack_enabled(env, env_config=None):
+    """Production notifies; test only if its config says notify_slack: true."""
+    if env == "production":
+        return True
+    return bool((env_config or {}).get("notify_slack", False))
+
+
+NOTIFY_ON = False
+
+
 def send_slack_notification(message, is_error=False):
     """
     Send a notification to Eva's Slack channel.
     Uses the openclaw message tool via CLI if available, otherwise logs to stderr.
     Never raises — notification failures must not break the pipeline.
+    Silent outside production unless that environment opts in (NOTIFY_ON).
     """
+    if not NOTIFY_ON:
+        print(f"[NOTIFY skipped: {NOTIFY_ENV or 'no environment'}] {message}", file=sys.stderr)
+        return
     try:
         prefix = "🔴 INTAKE ERROR" if is_error else "✅ INTAKE COMPLETE"
         full_msg = f"{prefix}: {message}"
@@ -5507,6 +5527,8 @@ def run_pipeline(args):
     env = args.environment or 'test'
     config['active'] = config[env]
     config['active_env'] = env
+    global NOTIFY_ENV, NOTIFY_ON
+    NOTIFY_ENV, NOTIFY_ON = env, slack_enabled(env, config[env])
 
     sheets_api = get_sheets_service()
     drive_api = get_drive_service()

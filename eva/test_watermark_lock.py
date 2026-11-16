@@ -184,6 +184,29 @@ def test_registry(m, tmp):
           "step_ingest lee y guarda el registro de su ambiente")
 
 
+def test_slack(m, tmp):
+    print("\n5. Slack solo en producción")
+    calls = []
+    real_run = m.subprocess.run
+    m.subprocess.run = lambda cmd, **k: calls.append(cmd) or type("R", (), {"returncode": 0})()
+    try:
+        check(m.slack_enabled("production", {}) is True, "producción avisa")
+        check(m.slack_enabled("test", {}) is False, "test no avisa por defecto")
+        check(m.slack_enabled("test", {"notify_slack": True}) is True, "test avisa solo si su config lo pide")
+        m.NOTIFY_ENV, m.NOTIFY_ON = "test", False
+        m.send_slack_notification("corrida de test")
+        check(calls == [], "una corrida de test no llama a openclaw")
+        m.NOTIFY_ENV, m.NOTIFY_ON = "production", True
+        m.send_slack_notification("corrida de producción")
+        check(len(calls) == 1 and "#foundation-ops" in calls[0], "producción sí llama a openclaw")
+        m.NOTIFY_ENV, m.NOTIFY_ON = None, False
+        src = Path(m.__file__).read_text()
+        check("NOTIFY_ENV, NOTIFY_ON = env, slack_enabled(env, config[env])" in src,
+              "run_pipeline fija el interruptor según el ambiente")
+    finally:
+        m.subprocess.run = real_run
+
+
 def main():
     print("=" * 68)
     print("WATERMARK POR AMBIENTE Y CANDADO")
@@ -195,6 +218,7 @@ def main():
         test_lock(m, tmp)
         test_write_holds_watermark(m, tmp)
         test_registry(m, tmp)
+        test_slack(m, tmp)
     print("\n" + "=" * 68)
     print(f"WATERMARK Y CANDADO: {'FALLA' if FAILS else 'OK'} "
           f"({len(FAILS)} fallidos)")

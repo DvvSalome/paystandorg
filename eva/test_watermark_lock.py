@@ -48,6 +48,7 @@ def load(tmp):
     mod.CACHE_DIR = tmp
     mod.WATERMARK_LEGACY = tmp / "intake_watermark.json"
     mod.RUN_LOCK_PATH = tmp / "intake_pipeline.lock"
+    mod.CONFIG_DIR = tmp
     return mod
 
 
@@ -157,6 +158,32 @@ def test_write_holds_watermark(m, tmp):
           "y sigue sumando corrida tras corrida")
 
 
+def test_registry(m, tmp):
+    print("\n4. Un registro de grantees por ambiente")
+    real = [{"grantee_id": "GR-2026-010", "legal_name": "Real Org 2026", "country": "Peru"}]
+    (tmp / "grantee_registry.json").write_text(json.dumps(real))
+    reg = m.load_grantee_registry("test")
+    check([g["grantee_id"] for g in reg] == ["GR-2026-010"],
+          "test arranca del registro real, para reconocer renovaciones")
+    reg.append({"grantee_id": "GR-2027-001", "legal_name": "Demo (DEMO)", "country": "Colombia"})
+    m.save_grantee_registry("test", reg)
+    prod = json.loads((tmp / "grantee_registry.json").read_text())
+    check([g["grantee_id"] for g in prod] == ["GR-2026-010"],
+          "un grantee creado en test NO entra al registro de producción")
+    check([g["grantee_id"] for g in m.load_grantee_registry("test")] == ["GR-2026-010", "GR-2027-001"],
+          "test conserva sus propios grantees entre corridas")
+    check(m.load_grantee_registry("production") == prod, "producción lee solo su archivo")
+    try:
+        m.load_grantee_registry(None)
+        check(False, "un ambiente vacío falla en vez de caer al archivo de producción")
+    except ValueError:
+        check(True, "un ambiente vacío falla en vez de caer al archivo de producción")
+    src = (Path(m.__file__)).read_text()
+    check("load_grantee_registry(config['active_env'])" in src
+          and "save_grantee_registry(config['active_env'], registry)" in src,
+          "step_ingest lee y guarda el registro de su ambiente")
+
+
 def main():
     print("=" * 68)
     print("WATERMARK POR AMBIENTE Y CANDADO")
@@ -167,6 +194,7 @@ def main():
         test_watermark(m, tmp)
         test_lock(m, tmp)
         test_write_holds_watermark(m, tmp)
+        test_registry(m, tmp)
     print("\n" + "=" * 68)
     print(f"WATERMARK Y CANDADO: {'FALLA' if FAILS else 'OK'} "
           f"({len(FAILS)} fallidos)")

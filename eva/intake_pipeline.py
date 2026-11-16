@@ -834,13 +834,45 @@ def get_existing_app_ids(sheets_api, spreadsheet_id):
 
 # ─── Grantee Registry ──────────────────────────────────────────────────────
 
-def load_grantee_registry():
-    """Load the grantee registry JSON (pre-populated from Master Tracker)."""
-    registry_path = CONFIG_DIR / "grantee_registry.json"
-    if registry_path.exists():
-        with open(registry_path) as f:
+def registry_path(env):
+    """
+    One registry file per environment. Until 2026-11-16 both shared
+    data/grantee_registry.json, so every test run added its fictitious
+    grantees (GR-2027-001 DEMO, GR-2027-002 ...) to the file production reads:
+    production would then number real grantees after them, and could match a
+    real applicant to a test entry as a renewal. The four junk entries cleaned
+    on 2026-11-13 came from this.
+    """
+    if env not in ENVIRONMENTS:
+        raise ValueError(f"registry_path: unknown environment {env!r}")
+    if env == "production":
+        return CONFIG_DIR / "grantee_registry.json"
+    return CONFIG_DIR / f"grantee_registry.{env}.json"
+
+
+def load_grantee_registry(env):
+    """
+    Load the grantee registry JSON (pre-populated from Master Tracker).
+    Test starts from the production file when it has none of its own, so it
+    still recognises real 2026 grantees as renewals; from then on it only
+    writes its own copy.
+    """
+    path = registry_path(env)
+    if not path.exists() and env != "production":
+        path = registry_path("production")
+    if path.exists():
+        with open(path) as f:
             return json.load(f)
     return []
+
+
+def save_grantee_registry(env, registry):
+    path = registry_path(env)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, 'w') as f:
+        json.dump(registry, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
 
 
 def load_seguimiento_2027():
@@ -2759,7 +2791,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
     wm_before = wm['last_timestamp']
 
     # Load grantee registry and seguimiento data
-    registry = load_grantee_registry()
+    registry = load_grantee_registry(config['active_env'])
     seguimiento = load_seguimiento_2027()
     listas = load_tracker_listas()
 
@@ -3011,8 +3043,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
         }, f, indent=2, ensure_ascii=False)
 
     # Save updated registry
-    with open(CONFIG_DIR / "grantee_registry.json", 'w') as f:
-        json.dump(registry, f, indent=2, ensure_ascii=False)
+    save_grantee_registry(config['active_env'], registry)
 
     warnings_list = []
     if new_grantees_created > 0:

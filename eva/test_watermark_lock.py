@@ -145,12 +145,16 @@ def test_write_holds_watermark(m, tmp):
           "con la escritura completa la marca avanza")
     check(m.load_watermark("test")["last_timestamp"] is None,
           "y solo en el ambiente de la corrida")
+    check(m.load_watermark("production")["total_processed"] == 1,
+          "el contador total_processed suma las solicitudes escritas (quedaba en 0)")
 
     m.update_dashboard = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("dash"))
     apps2 = [{"timestamp": "2026-11-13T13:00:00", "cleaned": {"app_id": "APP-2027-0102"}}]
     m.step_write(None, apps2, [], cfg, "RUN-DASH", [], "manual", "test")
     check(m.load_watermark("production")["last_timestamp"] == "2026-11-13T13:00:00",
           "un error solo del Dashboard no retiene la marca: los resultados sí llegaron")
+    check(m.load_watermark("production")["total_processed"] == 2,
+          "y sigue sumando corrida tras corrida")
 
 
 def main():

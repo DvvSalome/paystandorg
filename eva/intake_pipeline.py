@@ -5229,6 +5229,12 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
         last_app = applications[-1]
         wm['last_timestamp'] = last_app['timestamp']
         wm['last_run_id'] = run_id
+        # The counters live here too. Until 2026-11-16 step_ingest updated them
+        # on its own copy, which this reload discarded, so total_processed
+        # stayed at 0 forever. It seeds generated App_IDs, so a run without a
+        # form-supplied ID would mint APP-2027-0001 again and collide.
+        wm['total_processed'] = wm.get('total_processed', 0) + len(applications)
+        wm['last_row'] = wm.get('last_row', 0) + len(applications)
         save_watermark(env, wm)
         print(f"  Watermark updated ({env}): {wm['last_timestamp']}")
 

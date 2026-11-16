@@ -67,5 +67,7 @@ jobs:
           python3 test_documentos.py
           python3 test_sync_sheet_headers.py
           python3 test_review_board.py   # needs node and site/assets/questions.js
+          python3 test_reglas_revision.py   # needs node and site/assets/questions.js
+          python3 test_reproceso.py         # needs node and site/assets/questions.js
           python3 scoring_verify.py --fixtures
           python3 test_crosscheck.py

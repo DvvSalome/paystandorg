@@ -79,23 +79,57 @@ const APPS = [
   await p.screenshot({ path: OUT + "/dash-detail-1440.png" });
   await p.click(".file .btn >> nth=0");
   await p.waitForTimeout(400);
-  await p.click(".back");
+  must((await p.textContent(".crumbs")).includes("1 of 3"), "position shown (1 of 3)");
+  await p.click("text=Next ›");
+  await p.waitForFunction(() => /0002/.test(document.querySelector(".head .kicker").textContent));
+  must((await p.textContent(".crumbs")).includes("2 of 3"), "Next moves to the second application");
+  await p.click("text=‹ Previous");
+  await p.waitForFunction(() => /0001/.test(document.querySelector(".head .kicker").textContent));
+  await p.click(".rail a >> nth=5");
+  await p.waitForTimeout(900);
+  must(await p.$$eval(".rail a.on", (n) => n.length === 1), "section list highlights the section being read");
+  await p.click(".crumbs a.btn >> nth=0");
+  must((await p.textContent("#navcount")).trim() === "1", "nav shows 1 application not opened yet");
+
+  // overview
+  await p.click("#tabs a[data-tab=overview]");
+  await p.waitForSelector(".chart");
+  must((await p.$$(".chart")).length === 8, "8 charts on the overview");
+  must(await p.$eval("#tabs a[data-tab=overview]", (a) => a.getAttribute("aria-current") === "page"), "active tab is marked");
+  await p.hover(".brow >> nth=0");
+  must(await p.isVisible("#tip") && (await p.textContent("#tip")).length > 3, "hovering a bar shows a tooltip");
+  await p.screenshot({ path: OUT + "/dash-overview-1440.png", fullPage: true });
+  await p.click(".chart:nth-of-type(1) .tblink >> nth=0");
+  must((await p.$$(".chart .sub-t")).length === 1, "a chart can be viewed as a table");
+  await p.click(".chart .tblink >> nth=0");
+  await p.click(".chart:has(h3:text('Amount requested by country')) .brow >> nth=0");
+  await p.waitForSelector("tr.row");
+  must((await p.$$("tr.row")).length === 1 && (await p.textContent(".chips")).includes("Country:"), "clicking a country bar filters the list");
+  await p.click(".fchip");
+  must((await p.$$("tr.row")).length === 3, "removing the filter tag shows all again");
+
+  // help
+  await p.click("#tabs a[data-tab=help]");
+  await p.waitForSelector(".help");
+  must((await p.$$(".help .card")).length === 6, "help page renders");
+  await p.click("#tabs a[data-tab=apps]");
+  await p.waitForSelector("tr.row");
 
   await p.fill("input[type=search]", "hostile-org");
   await p.click("tr.row");
   await p.waitForSelector(".sec");
   must(await p.evaluate(() => window.__xss === undefined), "HTML in answers is never executed");
   must((await p.textContent("#main")).includes("<script>window.__xss=2</script>"), "hostile text shown as plain text");
-  await p.click(".back");
+  await p.click(".crumbs a.btn >> nth=0");
   await p.fill("input[type=search]", "");
 
-  const [dl] = await Promise.all([p.waitForEvent("download"), p.click("#export")]);
+  const [dl] = await Promise.all([p.waitForEvent("download"), (async () => { await p.click("#usermenu"); await p.click("#export"); })()]);
   const csv = fs.readFileSync(await dl.path(), "utf8");
   must(csv.split("\r\n").filter(Boolean).length === 4, "CSV has header + 3 rows");
   must(csv.includes("\"'=HYPERLINK"), "CSV neutralizes a formula typed by an applicant");
   must(!csv.includes('"=HYPERLINK'), "no CSV cell starts with a formula");
 
-  await p.click("#signout");
+  await p.click("#usermenu"); await p.click("#signout");
   must(await p.isVisible("#login"), "sign out returns to login");
 
   const m = await ctx.newPage();
@@ -110,6 +144,13 @@ const APPS = [
   await m.waitForSelector(".sec");
   must(await m.evaluate(() => document.documentElement.scrollWidth <= 392), "no horizontal scroll at 390px (detail)");
   await m.screenshot({ path: OUT + "/dash-detail-390.png" });
+  await m.click("#tabs a[data-tab=overview]");
+  await m.waitForSelector(".chart");
+  must(await m.evaluate(() => document.documentElement.scrollWidth <= 392), "no horizontal scroll at 390px (overview)");
+  await m.screenshot({ path: OUT + "/dash-overview-390.png" });
+  await m.click("#tabs a[data-tab=help]");
+  await m.waitForSelector(".help");
+  must(await m.evaluate(() => document.documentElement.scrollWidth <= 392), "no horizontal scroll at 390px (help)");
 
   console.log("page errors:", errs.length ? errs : "none");
   if (errs.length) process.exitCode = 1;

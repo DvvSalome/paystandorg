@@ -8,34 +8,52 @@
 <link rel="stylesheet" href="admin.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+
 <div id="login" class="login" hidden>
   <form class="card logincard" id="loginform" autocomplete="off">
-    <p class="kicker">Paystand Impact Foundation</p>
+    <div class="logo" aria-hidden="true">paystand<span>.org</span></div>
+    <p class="kicker">Impact Foundation</p>
     <h1>Grant Application 2027</h1>
     <p class="muted">Team access. Enter your personal access code to read the applications.</p>
     <label for="code">Access code</label>
     <input id="code" type="password" autocomplete="off" spellcheck="false" required>
     <button class="btn primary" type="submit">Open dashboard</button>
     <p id="loginerr" class="err" role="alert"></p>
+    <p class="fine">Don't have a code? Ask the person who manages the foundation's applications.</p>
   </form>
 </div>
 
 <div id="app" hidden>
-  <header class="top">
-    <div class="wrap topin">
-      <div>
-        <p class="kicker">Paystand Impact Foundation</p>
-        <h1>Grant Application 2027 <span class="thin">· Applications</span></h1>
-      </div>
-      <div class="topact">
-        <span id="viewer" class="muted-on-navy"></span>
-        <button class="btn ghost" id="refresh" type="button">Refresh</button>
-        <button class="btn ghost" id="export" type="button">Export CSV</button>
-        <button class="btn ghost" id="signout" type="button">Sign out</button>
+  <header class="nav">
+    <div class="wrap navin">
+      <a class="brand" href="#/" aria-label="Applications home">
+        <span class="logo">paystand<span>.org</span></span>
+        <span class="brandsub">Impact Foundation</span>
+      </a>
+      <nav class="tabs" id="tabs" aria-label="Main">
+        <a href="#/" data-tab="apps">Applications <span class="pill" id="navcount"></span></a>
+        <a href="#/overview" data-tab="overview">Overview</a>
+        <a href="#/help" data-tab="help">Help</a>
+      </nav>
+      <div class="navact">
+        <button class="iconbtn" id="refresh" type="button" title="Refresh now" aria-label="Refresh now">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+        </button>
+        <div class="menuwrap">
+          <button class="avatar" id="usermenu" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu"><span id="avatarletter">?</span></button>
+          <div class="menu" id="menu" hidden>
+            <div class="menuhead"><span id="viewer"></span></div>
+            <button type="button" id="export">Export CSV</button>
+            <button type="button" id="signout">Sign out</button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
-  <main class="wrap" id="main"></main>
+  <main class="wrap" id="main" tabindex="-1"></main>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <div class="tip" id="tip" role="tooltip" hidden></div>
 </div>
 <noscript><p class="wrap">This page needs JavaScript.</p></noscript>
 

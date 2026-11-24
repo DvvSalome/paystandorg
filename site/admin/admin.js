@@ -6,24 +6,57 @@
   var SECTIONS = G.SECTIONS, FIELDS = G.FIELDS;
   var SS_KEY = "ga27-admin-code", SEEN_KEY = "ga27-admin-seen";
   var MONEY = { B5: 1, G1: 1, G2: 1 };
-  var APPS = [], VIEWER = "", UPDATED = null, FILTER = { q: "", profile: "", route: "", country: "", type: "", sort: "new" };
+  var APPS = [], VIEWER = "", UPDATED = null, LOADED = false;
+  var FILTER = { q: "", profile: "", route: "", country: "", type: "", sort: "new" };
+  var spy = null;
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); return n; }
-  function fieldById(id) { for (var i = 0; i < FIELDS.length; i++) if (FIELDS[i].id === id) return FIELDS[i]; return null; }
   function ans(a, id) { var v = a.answers[id]; return v == null ? "" : v; }
   function txt(v) { return Array.isArray(v) ? v.join("; ") : v === true ? "Yes" : v === false ? "No" : String(v == null ? "" : v); }
   function num(x) { var n = parseFloat(String(x == null ? "" : x).replace(/[$,\s]/g, "")); return isNaN(n) ? null : n; }
   function money(n) { return n == null ? "—" : "$" + n.toLocaleString("en-US", { maximumFractionDigits: 2 }); }
+  function compact(n) { return n >= 1e6 ? "$" + (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? "$" + Math.round(n / 100) / 10 + "K" : "$" + n; }
   function when(iso) { var d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
   function day(iso) { var d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }); }
+  function ago(iso) {
+    var s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (isNaN(s)) return "";
+    if (s < 90) return "just now"; if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago"; var d = Math.round(s / 86400); return d + (d === 1 ? " day ago" : " days ago");
+  }
   function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
   function shortType(a1) { return String(a1 || "").replace(/\s*\(.*$/, ""); }
+  function head1(s) { return String(s || "").split(" — ")[0]; }
   function safeUrl(u) { return /^https?:\/\/[^\s]+$/i.test(String(u || "").trim()) ? String(u).trim() : ""; }
+  function orgName(a) { return ans(a, "B1") || "(no name)"; }
+  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
 
   function seen() { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch (e) { return []; } }
   function markSeen(id) { try { var s = seen(); if (s.indexOf(id) === -1) { s.push(id); localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } } catch (e) {} }
+  function unseenCount() { var s = seen(); return APPS.filter(function (a) { return s.indexOf(a.application_id) === -1; }).length; }
+
+  var toastT;
+  function toast(msg, bad) {
+    var t = $("toast"); t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 4500);
+  }
+
+  /* ---------- tooltip (one for the whole page; text only) ---------- */
+  function tip(node, title, sub) {
+    var t = $("tip");
+    function show(x, y) {
+      clear(t); t.appendChild(el("b", null, title)); if (sub) t.appendChild(el("span", null, sub)); t.hidden = false;
+      var w = t.offsetWidth, h = t.offsetHeight;
+      t.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x + 14)) + "px";
+      t.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, y + 14)) + "px";
+    }
+    node.addEventListener("pointermove", function (e) { show(e.clientX, e.clientY); });
+    node.addEventListener("pointerleave", function () { t.hidden = true; });
+    node.addEventListener("focus", function () { var r = node.getBoundingClientRect(); show(r.left + r.width / 2, r.top); });
+    node.addEventListener("blur", function () { t.hidden = true; });
+  }
 
   /* ---------- API ---------- */
   function api(route, body) {
@@ -32,12 +65,17 @@
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) { var e = new Error(j.error || "Request failed"); e.status = r.status; throw e; } return j; }); });
   }
   function load(silent) {
+    var before = APPS.map(function (a) { return a.application_id; });
     return api("/admin/list").then(function (j) {
-      APPS = j.applications || []; VIEWER = j.viewer || ""; UPDATED = new Date();
-      $("login").hidden = true; $("app").hidden = false; $("viewer").textContent = VIEWER ? "Signed in as " + VIEWER : "";
+      APPS = j.applications || []; VIEWER = j.viewer || ""; UPDATED = new Date(); LOADED = true;
+      $("login").hidden = true; $("app").hidden = false;
+      $("viewer").textContent = VIEWER ? "Signed in as " + VIEWER : ""; $("avatarletter").textContent = (VIEWER || "?").charAt(0);
       route();
+      var fresh = APPS.filter(function (a) { return before.indexOf(a.application_id) === -1; }).length;
+      if (silent && before.length && fresh) toast(plural(fresh, "new application") + " arrived");
     }).catch(function (e) {
-      if (e.status === 401 || e.status === 429 || !silent) { showLogin(e.message, e.status === 401 && !silent ? "" : null); }
+      if (e.status === 401 || e.status === 429 || !silent) showLogin(e.message);
+      else toast("Could not refresh: " + e.message, true);
       throw e;
     });
   }
@@ -46,8 +84,7 @@
     try { sessionStorage.removeItem(SS_KEY); } catch (e) {}
   }
 
-  /* ---------- derived data ---------- */
-  function orgName(a) { return ans(a, "B1") || "(no name)"; }
+  /* ---------- filtering ---------- */
   function searchText(a) {
     var parts = [a.application_id];
     Object.keys(a.answers).forEach(function (k) { parts.push(txt(a.answers[k])); });
@@ -55,7 +92,7 @@
     return parts.join(" \n ").toLowerCase();
   }
   function filtered() {
-    var q = FILTER.q.trim().toLowerCase(), s = seen();
+    var q = FILTER.q.trim().toLowerCase();
     var out = APPS.filter(function (a) {
       if (FILTER.profile && a.profile !== FILTER.profile) return false;
       if (FILTER.route && a.route !== FILTER.route) return false;
@@ -73,19 +110,33 @@
     return out;
   }
   function uniq(fn) { var m = {}; APPS.forEach(function (a) { var v = fn(a); if (v) m[v] = 1; }); return Object.keys(m).sort(); }
+  function anyFilter() { return !!(FILTER.q || FILTER.profile || FILTER.route || FILTER.country || FILTER.type); }
 
-  /* ---------- list view ---------- */
-  function route() {
-    var id = decodeURIComponent((location.hash || "").replace(/^#\/?/, ""));
-    var a = id && APPS.filter(function (x) { return x.application_id === id; })[0];
-    window.scrollTo(0, 0);
-    if (a) renderDetail(a); else renderList();
+  /* ---------- routing ---------- */
+  function setTab(name) {
+    Array.prototype.forEach.call($("tabs").querySelectorAll("a"), function (a) {
+      if (a.getAttribute("data-tab") === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
   }
+  function route() {
+    if (!LOADED) return;
+    if (spy) { spy.disconnect(); spy = null; }
+    var h = decodeURIComponent((location.hash || "").replace(/^#\/?/, ""));
+    window.scrollTo(0, 0);
+    var n = unseenCount(); $("navcount").textContent = n ? String(n) : "";
+    if (h === "overview") { setTab("overview"); renderOverview(); return; }
+    if (h === "help") { setTab("help"); renderHelp(); return; }
+    var a = /^APP-/.test(h) && APPS.filter(function (x) { return x.application_id === h; })[0];
+    if (a) { setTab("apps"); renderDetail(a); return; }
+    setTab("apps"); renderList();
+  }
+
+  /* ---------- applications list ---------- */
   function tile(n, l, sub) {
     var t = el("div", "tile"); t.appendChild(el("div", "n", n)); t.appendChild(el("div", "l", l));
     if (sub) t.appendChild(el("div", "sub", sub)); return t;
   }
-  function count(fn, v) { return APPS.filter(function (a) { return fn(a) === v; }).length; }
+  function countBy(fn, v) { return APPS.filter(function (a) { return fn(a) === v; }).length; }
   function select(label, opts, key) {
     var s = el("select"); s.setAttribute("aria-label", label);
     var o0 = el("option", null, label); o0.value = ""; s.appendChild(o0);
@@ -96,23 +147,32 @@
     s.addEventListener("change", function () { FILTER[key] = s.value; renderRows(); });
     return s;
   }
-  var rowsHost, countEl;
+  var rowsHost, countEl, chipsEl;
+  function pageHead(title, sub) {
+    var h = el("div", "pagehead"), l = el("div"); l.appendChild(el("h2", null, title));
+    if (sub) l.appendChild(el("p", null, sub)); h.appendChild(l);
+    var live = el("div", "live"); live.appendChild(el("i"));
+    var last = APPS[0] && APPS.slice().sort(function (x, y) { return String(y.finalized_at).localeCompare(String(x.finalized_at)); })[0];
+    live.appendChild(el("span", null, "Updated " + (UPDATED ? UPDATED.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "") +
+      (last ? " · last application " + ago(last.finalized_at) : "")));
+    h.appendChild(live); return h;
+  }
   function renderList() {
     var m = clear($("main"));
-    var total = APPS.reduce(function (s, a) { return s + (num(ans(a, "G2")) || 0); }, 0);
+    m.appendChild(pageHead("Applications", "Click an application to read all of its answers and open its documents."));
+    var total = APPS.reduce(function (s, a) { return s + (num(ans(a, "G2")) || 0); }, 0), fresh = unseenCount();
     var tiles = el("div", "tiles");
-    tiles.appendChild(tile(String(APPS.length), "Applications received"));
+    tiles.appendChild(tile(String(APPS.length), "Applications received", fresh ? fresh + " not opened yet" : "All opened"));
     tiles.appendChild(tile(money(total), "Total requested", APPS.length ? "Average " + money(total / APPS.length) : ""));
-    tiles.appendChild(tile(count(function (a) { return a.profile; }, "Initial") + " / " + count(function (a) { return a.profile; }, "Established"), "Initial / Established"));
-    tiles.appendChild(tile(count(function (a) { return a.route; }, "New") + " / " + count(function (a) { return a.route; }, "Renewal"), "New / Renewal"));
-    tiles.appendChild(tile(String(uniq(function (a) { return ans(a, "B2"); }).length), "Countries"));
+    tiles.appendChild(tile(countBy(function (a) { return a.profile; }, "Initial") + " / " + countBy(function (a) { return a.profile; }, "Established"), "Initial / Established"));
+    tiles.appendChild(tile(countBy(function (a) { return a.route; }, "New") + " / " + countBy(function (a) { return a.route; }, "Renewal"), "New / Renewal"));
     m.appendChild(tiles);
 
     var tb = el("div", "toolbar");
     var q = el("input"); q.type = "search"; q.placeholder = "Search any answer, organization, ID…"; q.value = FILTER.q; q.setAttribute("aria-label", "Search");
     q.addEventListener("input", function () { FILTER.q = q.value; renderRows(); });
     tb.appendChild(q);
-    tb.appendChild(select("All profiles", ["Initial", "Established"], "profile"));
+    tb.appendChild(select("All stages", ["Initial", "Established"], "profile"));
     tb.appendChild(select("New and renewal", ["New", "Renewal"], "route"));
     tb.appendChild(select("All countries", uniq(function (a) { return ans(a, "B2"); }), "country"));
     tb.appendChild(select("All applicant types", uniq(function (a) { return shortType(ans(a, "A1")); }), "type"));
@@ -120,35 +180,55 @@
     so.firstChild.remove(); tb.appendChild(so);
     countEl = el("span", "count"); tb.appendChild(countEl);
     m.appendChild(tb);
-    m.appendChild(el("p", "upd", "Updated " + (UPDATED ? UPDATED.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "") + ". Click an application to read all of its answers."));
+    chipsEl = el("div", "chips"); m.appendChild(chipsEl);
     rowsHost = el("div", "list"); m.appendChild(rowsHost);
+    if (!LOADED) { for (var i = 0; i < 4; i++) rowsHost.appendChild(el("div", "skel")); return; }
     renderRows();
   }
+  function filterChips() {
+    clear(chipsEl);
+    [["profile", "Stage"], ["route", "Route"], ["country", "Country"], ["type", "Type"]].forEach(function (f) {
+      if (!FILTER[f[0]]) return;
+      var c = el("button", "fchip", f[1] + ": " + FILTER[f[0]]); c.type = "button"; c.setAttribute("aria-label", "Remove filter " + f[1]);
+      c.appendChild(el("b", null, "×")); c.addEventListener("click", function () { FILTER[f[0]] = ""; renderList(); }); chipsEl.appendChild(c);
+    });
+    if (FILTER.q) { var c = el("button", "fchip", "Search: " + FILTER.q); c.type = "button"; c.appendChild(el("b", null, "×")); c.addEventListener("click", function () { FILTER.q = ""; renderList(); }); chipsEl.appendChild(c); }
+  }
+  function avatar(a) { return el("div", "mono-av", orgName(a).replace(/^[^A-Za-z0-9À-ÿ]+/, "").charAt(0) || "?"); }
+  function cell(l, v, cls) { var c = el("td", cls || null, v); c.setAttribute("data-l", l); return c; }
   function renderRows() {
     var list = filtered(), s = seen();
     countEl.textContent = list.length + " of " + APPS.length + " shown";
-    clear(rowsHost);
-    if (!list.length) { rowsHost.appendChild(el("div", "empty", APPS.length ? "No application matches these filters." : "No applications have arrived yet.")); return; }
-    var t = el("table"), th = el("thead"), hr = el("tr");
-    [["Organization / project", ""], ["Country", ""], ["Type", ""], ["Stage", ""], ["Requested", "num"], ["Submitted", ""], ["Files", "num"]].forEach(function (h) { var c = el("th", h[1], h[0]); hr.appendChild(c); });
+    filterChips(); clear(rowsHost);
+    if (!list.length) {
+      var e = el("div", "empty"); e.appendChild(el("b", null, APPS.length ? "No application matches these filters" : "No applications yet"));
+      e.appendChild(el("span", null, APPS.length ? "Try a different search or clear the filters." : "They will appear here as soon as someone submits the form."));
+      if (APPS.length && anyFilter()) { var br = el("div"); br.style.marginTop = "14px"; var b = el("button", "btn", "Clear filters"); b.type = "button";
+        b.addEventListener("click", function () { FILTER = { q: "", profile: "", route: "", country: "", type: "", sort: FILTER.sort }; renderList(); }); br.appendChild(b); e.appendChild(br); }
+      rowsHost.appendChild(e); return;
+    }
+    var t = el("table", "main"), th = el("thead"), hr = el("tr");
+    [["Organization / project", ""], ["Country", ""], ["Type", ""], ["Stage", ""], ["Requested", "num"], ["Submitted", ""], ["Files", "num"]].forEach(function (h) { hr.appendChild(el("th", h[1], h[0])); });
     th.appendChild(hr); t.appendChild(th);
     var tbd = el("tbody");
     list.forEach(function (a) {
       var tr = el("tr", "row"); tr.tabIndex = 0; tr.setAttribute("role", "link");
-      var c1 = el("td"); var o = el("div", "org", orgName(a));
+      var c1 = el("td"), w = el("div", "who"); w.appendChild(avatar(a));
+      var txtBox = el("div"), o = el("div", "org", orgName(a));
       if (s.indexOf(a.application_id) === -1) o.appendChild(el("span", "badge", "NEW"));
-      c1.appendChild(o); c1.appendChild(el("div", "mono muted", a.application_id));
-      var proj = a.answers.E1__title; if (proj) c1.appendChild(el("div", "muted", proj));
-      tr.appendChild(c1);
+      txtBox.appendChild(o);
+      if (a.answers.E1__title) txtBox.appendChild(el("div", "proj", a.answers.E1__title));
+      txtBox.appendChild(el("div", "mono", a.application_id));
+      w.appendChild(txtBox); c1.appendChild(w); tr.appendChild(c1);
       tr.appendChild(cell("Country", ans(a, "B2") || "—"));
       tr.appendChild(cell("Type", shortType(ans(a, "A1")) || "—"));
       var st = el("td"); st.setAttribute("data-l", "Stage");
       if (a.profile) st.appendChild(el("span", "chip" + (a.profile === "Initial" ? " warm" : ""), a.profile));
       if (a.route) st.appendChild(el("span", "chip", a.route));
       tr.appendChild(st);
-      var am = cell("Requested", money(num(ans(a, "G2")))); am.className = "num"; tr.appendChild(am);
+      tr.appendChild(cell("Requested", money(num(ans(a, "G2"))), "num amt"));
       tr.appendChild(cell("Submitted", day(a.finalized_at)));
-      var fl = cell("Files", String(a.files.length)); fl.className = "num"; tr.appendChild(fl);
+      tr.appendChild(cell("Files", String(a.files.length), "num"));
       var open = function () { location.hash = "#/" + encodeURIComponent(a.application_id); };
       tr.addEventListener("click", open);
       tr.addEventListener("keydown", function (e) { if (e.key === "Enter") open(); });
@@ -156,20 +236,39 @@
     });
     t.appendChild(tbd); rowsHost.appendChild(t);
   }
-  function cell(l, v) { var c = el("td", null, v); c.setAttribute("data-l", l); return c; }
 
-  /* ---------- detail view ---------- */
+  /* ---------- detail ---------- */
   function fact(k, v) { var f = el("div", "fact"); f.appendChild(el("div", "k", k)); f.appendChild(el("div", "v", v || "—")); return f; }
   function renderDetail(a) {
     markSeen(a.application_id);
+    var n = unseenCount(); $("navcount").textContent = n ? String(n) : "";
     var m = clear($("main"));
-    var back = el("a", "back", "← All applications"); back.href = "#/"; m.appendChild(back);
+    var order = filtered(), idx = -1;
+    order.forEach(function (x, i) { if (x.application_id === a.application_id) idx = i; });
+    if (idx === -1) { order = APPS; order.forEach(function (x, i) { if (x.application_id === a.application_id) idx = i; }); }
 
-    var head = el("div", "card head");
-    head.appendChild(el("p", "kicker", a.application_id));
-    head.appendChild(el("h2", null, orgName(a)));
-    if (a.profile) head.appendChild(el("span", "chip" + (a.profile === "Initial" ? " warm" : ""), a.profile));
-    if (a.route) head.appendChild(el("span", "chip", a.route));
+    var cr = el("div", "crumbs");
+    var back = el("a", "btn small", "← Applications"); back.href = "#/"; cr.appendChild(back);
+    var sp = el("div", "sp");
+    function nav(label, target) {
+      var b = el(target ? "a" : "span", "btn small", label);
+      if (target) b.href = "#/" + encodeURIComponent(target.application_id); else b.setAttribute("aria-disabled", "true");
+      if (!target) b.style.opacity = ".45"; return b;
+    }
+    sp.appendChild(nav("‹ Previous", order[idx - 1]));
+    sp.appendChild(el("span", "muted", idx + 1 + " of " + order.length));
+    sp.appendChild(nav("Next ›", order[idx + 1]));
+    var cp = el("button", "btn small", "Copy link"); cp.type = "button";
+    cp.addEventListener("click", function () { if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(function () { toast("Link copied"); }, function () {}); });
+    var pr = el("button", "btn small", "Print / PDF"); pr.type = "button"; pr.addEventListener("click", function () { window.print(); });
+    sp.appendChild(cp); sp.appendChild(pr); cr.appendChild(sp); m.appendChild(cr);
+
+    var head = el("div", "card head"); head.appendChild(avatar(a));
+    var hb = el("div"); hb.style.minWidth = "0"; hb.style.flex = "1";
+    hb.appendChild(el("p", "kicker", a.application_id));
+    hb.appendChild(el("h2", null, orgName(a)));
+    if (a.profile) hb.appendChild(el("span", "chip" + (a.profile === "Initial" ? " warm" : ""), a.profile));
+    if (a.route) hb.appendChild(el("span", "chip", a.route));
     var facts = el("div", "facts");
     facts.appendChild(fact("Project", a.answers.E1__title));
     facts.appendChild(fact("Country", ans(a, "B2")));
@@ -178,15 +277,13 @@
     facts.appendChild(fact("Total project budget", money(num(ans(a, "G1")))));
     facts.appendChild(fact("Primary contact", [a.answers.D1__name, a.answers.D1__email].filter(Boolean).join(" · ")));
     facts.appendChild(fact("Submitted", when(a.finalized_at)));
-    head.appendChild(facts);
-    var act = el("div", "actions");
-    var pr = el("button", "btn", "Print / save as PDF"); pr.type = "button"; pr.addEventListener("click", function () { window.print(); });
-    act.appendChild(pr); head.appendChild(act);
-    m.appendChild(head);
+    hb.appendChild(facts); head.appendChild(hb); m.appendChild(head);
 
-    var nav = el("nav", "snav"); nav.setAttribute("aria-label", "Sections");
-    m.appendChild(nav);
-    var V = a.answers, ST = { profile: a.profile || "—" };
+    var lay = el("div", "layout"), rail = el("nav", "rail"), body = el("div");
+    rail.setAttribute("aria-label", "Sections"); rail.appendChild(el("p", "rt", "Sections"));
+    lay.appendChild(rail); lay.appendChild(body); m.appendChild(lay);
+
+    var V = a.answers, ST = { profile: a.profile || "—" }, boxes = [];
     SECTIONS.forEach(function (sec) {
       var fs = FIELDS.filter(function (f) { return f.s === sec.id; });
       // A question is hidden only if its rule says "does not apply" AND it has no stored answer: nothing saved is ever hidden.
@@ -199,12 +296,20 @@
       box.appendChild(el("div", "secid", "Section " + sec.id));
       box.appendChild(el("h3", null, sec.title));
       shown.forEach(function (f) { box.appendChild(renderQuestion(a, f)); });
-      if (hidden) box.appendChild(el("p", "na", hidden + " question" + (hidden === 1 ? "" : "s") + " in this section did not apply to this applicant."));
-      m.appendChild(box);
-      var link = el("a", null, sec.id + " · " + sec.title); link.href = "#s-" + sec.id;
+      if (hidden) box.appendChild(el("p", "na", plural(hidden, "question") + " in this section did not apply to this applicant."));
+      body.appendChild(box); boxes.push(box);
+      var link = el("a"); link.href = "#s-" + sec.id; link.appendChild(el("i", null, sec.id)); link.appendChild(document.createTextNode(sec.title));
       link.addEventListener("click", function (e) { e.preventDefault(); box.scrollIntoView({ behavior: "smooth", block: "start" }); });
-      nav.appendChild(link);
+      rail.appendChild(link);
     });
+    if ("IntersectionObserver" in window) {                       // highlight the section being read
+      var links = rail.querySelectorAll("a");
+      spy = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { var i = boxes.indexOf(e.target); Array.prototype.forEach.call(links, function (l, j) { l.classList.toggle("on", i === j); }); } });
+      }, { rootMargin: "-90px 0px -65% 0px" });
+      boxes.forEach(function (b) { spy.observe(b); });
+      if (links[0]) links[0].classList.add("on");
+    }
   }
 
   function subTable(cols, rows) {
@@ -228,11 +333,11 @@
     if (f.type === "file" || files.length) {
       files.forEach(function (fl) {
         var w = el("span", "file"); w.appendChild(el("span", null, fl.name + " (" + kb(fl.size) + ")"));
-        var b = el("button", "btn", "Open"); b.type = "button";
+        var b = el("button", "btn small", "Open"); b.type = "button";
         b.addEventListener("click", function () {
           b.disabled = true;
           api("/admin/file", { application_id: a.application_id, question: f.id }).then(function (j) { window.open(j.url, "_blank", "noopener"); })
-            .catch(function (e) { alert("Could not open the file: " + e.message); }).then(function () { b.disabled = false; });
+            .catch(function (e) { toast("Could not open the file: " + e.message, true); }).then(function () { b.disabled = false; });
         });
         w.appendChild(b); body.appendChild(w);
       });
@@ -261,6 +366,135 @@
     q.appendChild(body); return q;
   }
 
+  /* ---------- overview (charts) ---------- */
+  // One series = one color (the validated blue). Bars are thin with a rounded data end, values sit at the tip,
+  // hover and keyboard focus show the same tooltip, and every chart has a table view.
+  function chartCard(title, subtitle, build, tCols, tRows, wide) {
+    var c = el("section", "card chart" + (wide ? " wide" : "")), h = el("header"), l = el("div");
+    l.appendChild(el("h3", null, title)); if (subtitle) l.appendChild(el("p", null, subtitle)); h.appendChild(l);
+    var tg = el("button", "tblink", "View as table"); tg.type = "button"; tg.setAttribute("aria-pressed", "false"); h.appendChild(tg);
+    var host = el("div"); c.appendChild(h); c.appendChild(host);
+    function draw() {
+      clear(host);
+      if (tg.getAttribute("aria-pressed") === "true") host.appendChild(subTable(tCols, tRows)); else build(host);
+    }
+    tg.addEventListener("click", function () {
+      var on = tg.getAttribute("aria-pressed") !== "true"; tg.setAttribute("aria-pressed", String(on));
+      tg.textContent = on ? "View as chart" : "View as table"; draw();
+    });
+    draw(); return c;
+  }
+  function tally(fn) {
+    var m = {}, order = [];
+    APPS.forEach(function (a) { var k = fn(a); if (!k) return; if (!m[k]) { m[k] = { label: k, n: 0, amt: 0 }; order.push(k); } m[k].n++; m[k].amt += num(ans(a, "G2")) || 0; });
+    return order.map(function (k) { return m[k]; }).sort(function (x, y) { return y.n - x.n || x.label.localeCompare(y.label); });
+  }
+  function barList(items, valueOf, fmt, tipOf, onClick) {
+    return function (host) {
+      var mx = Math.max.apply(null, items.map(valueOf).concat([1])), bars = el("div", "bars");
+      items.forEach(function (it) {
+        var r = el("div", "brow"); r.tabIndex = 0;
+        r.appendChild(el("div", "bl", it.label));
+        var t = el("div", "bt"), b = el("div", "bar"); b.style.width = "calc(" + (valueOf(it) / mx * 100) + "% - 64px)";
+        t.appendChild(b); t.appendChild(el("span", "bv", fmt(valueOf(it)))); r.appendChild(t);
+        var tp = tipOf(it); tip(r, tp[0], tp[1]);
+        if (onClick && it.click !== false) { r.setAttribute("role", "link"); r.addEventListener("click", function () { onClick(it); });
+          r.addEventListener("keydown", function (e) { if (e.key === "Enter") onClick(it); }); }
+        bars.appendChild(r);
+      });
+      host.appendChild(bars);
+    };
+  }
+  function countChart(title, subtitle, items, onClick) {
+    return chartCard(title, subtitle, barList(items, function (i) { return i.n; }, String, function (i) { return [plural(i.n, "application"), i.label + " · " + money(i.amt) + " requested"]; }, onClick),
+      [["Value", "label"], ["Applications", "n"], ["Requested", "amtf"]], items.map(function (i) { return { label: i.label, n: i.n, amtf: money(i.amt) }; }));
+  }
+  function perDay() {
+    var days = {}, stamps = APPS.map(function (a) { return new Date(a.finalized_at).getTime(); }).filter(function (t) { return !isNaN(t); });
+    if (!stamps.length) return [];
+    function key(t) { var d = new Date(t); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+    stamps.forEach(function (t) { days[key(t)] = (days[key(t)] || 0) + 1; });
+    var end = new Date(Math.max.apply(null, stamps)); end.setHours(12, 0, 0, 0);
+    var start = new Date(Math.min.apply(null, stamps)); start.setHours(12, 0, 0, 0);
+    if (end - start > 29 * 86400000) start = new Date(end.getTime() - 29 * 86400000);
+    var out = []; for (var t = start.getTime(); t <= end.getTime() + 1; t += 86400000) { var k = key(t); out.push({ k: k, d: new Date(t), n: days[k] || 0 }); }
+    return out;
+  }
+  function dayChart() {
+    var data = perDay(), mx = Math.max.apply(null, data.map(function (d) { return d.n; }).concat([1]));
+    var fmt = function (d) { return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
+    return chartCard("Applications per day", data.length ? "Last " + plural(data.length, "day") + " with activity" : "", function (host) {
+      var cols = el("div", "cols"), top = data.reduce(function (b, d) { return d.n > b.n ? d : b; }, data[0]);
+      data.forEach(function (d) {
+        var c = el("div", "col"); c.tabIndex = 0; var b = el("b"); b.style.height = (d.n / mx * 100) + "%"; if (!d.n) b.style.height = "0"; c.appendChild(b);
+        if (d === top && d.n) c.appendChild(el("span", "cv", String(d.n)));
+        tip(c, plural(d.n, "application"), fmt(d.d)); cols.appendChild(c);
+      });
+      host.appendChild(cols);
+      var x = el("div", "xlab"); x.appendChild(el("span", null, fmt(data[0].d))); x.appendChild(el("span", null, fmt(data[data.length - 1].d))); host.appendChild(x);
+    }, [["Day", "day"], ["Applications", "n"]], data.map(function (d) { return { day: fmt(d.d), n: d.n }; }), true);
+  }
+  function splitBar(label, parts) {      // one whole, split into parts; thin bar + legend with counts (the legend carries identity, not color alone)
+    var wrap = el("div"), total = parts.reduce(function (s, p) { return s + p.n; }, 0) || 1, cols = ["#FF6A2F", "#2F6FB3"];
+    wrap.appendChild(el("div", "bl", label));
+    var seg = el("div", "seg"); seg.setAttribute("role", "img"); seg.setAttribute("aria-label", label + ": " + parts.map(function (p) { return p.label + " " + p.n; }).join(", "));
+    parts.forEach(function (p, i) { if (!p.n) return; var s = el("i"); s.style.background = cols[i]; s.style.flex = p.n + " 1 0"; tip(s, plural(p.n, "application"), p.label + " · " + Math.round(p.n / total * 100) + "%"); seg.appendChild(s); });
+    wrap.appendChild(seg);
+    var lg = el("div", "legend");
+    parts.forEach(function (p, i) { var s = el("span"); var sw = el("em"); sw.style.background = cols[i]; s.appendChild(sw); s.appendChild(document.createTextNode(p.label + " · " + p.n + " (" + Math.round(p.n / total * 100) + "%)")); lg.appendChild(s); });
+    wrap.appendChild(lg); return wrap;
+  }
+  function renderOverview() {
+    var m = clear($("main"));
+    m.appendChild(pageHead("Overview", "How the applications received so far break down. Click a country or type to see its applications."));
+    if (!APPS.length) { var e = el("div", "card empty"); e.appendChild(el("b", null, "Nothing to chart yet")); e.appendChild(el("span", null, "Charts appear when the first application arrives.")); m.appendChild(e); return; }
+    var g = el("div", "grid2");
+    g.appendChild(dayChart());
+    g.appendChild(chartCard("Stage and route", "Initial vs Established, and New vs Renewal", function (host) {
+      host.appendChild(splitBar("Stage", [{ label: "Initial", n: countBy(function (a) { return a.profile; }, "Initial") }, { label: "Established", n: countBy(function (a) { return a.profile; }, "Established") }]));
+      host.appendChild(splitBar("Route", [{ label: "New", n: countBy(function (a) { return a.route; }, "New") }, { label: "Renewal", n: countBy(function (a) { return a.route; }, "Renewal") }]));
+    }, [["Group", "g"], ["Value", "v"], ["Applications", "n"]], [
+      { g: "Stage", v: "Initial", n: countBy(function (a) { return a.profile; }, "Initial") }, { g: "Stage", v: "Established", n: countBy(function (a) { return a.profile; }, "Established") },
+      { g: "Route", v: "New", n: countBy(function (a) { return a.route; }, "New") }, { g: "Route", v: "Renewal", n: countBy(function (a) { return a.route; }, "Renewal") }]));
+
+    var byC = tally(function (a) { return ans(a, "B2"); });
+    if (byC.length > 8) { var rest = byC.slice(8); byC = byC.slice(0, 8); byC.push({ label: "Other (" + rest.length + " countries)", n: rest.reduce(function (s, x) { return s + x.n; }, 0), amt: rest.reduce(function (s, x) { return s + x.amt; }, 0), click: false }); }
+    g.appendChild(chartCard("Amount requested by country", "Sum of the amount requested (G2)", barList(byC, function (i) { return i.amt; }, compact,
+      function (i) { return [money(i.amt), i.label + " · " + plural(i.n, "application")]; },
+      function (i) { FILTER = { q: "", profile: "", route: "", country: i.label, type: "", sort: FILTER.sort }; location.hash = "#/"; }),
+      [["Country", "label"], ["Requested", "amtf"], ["Applications", "n"]], byC.map(function (i) { return { label: i.label, amtf: money(i.amt), n: i.n }; })));
+
+    var bands = [["Under $10K", 0, 10000], ["$10K – $25K", 10000, 25000], ["$25K – $50K", 25000, 50000], ["$50K and over", 50000, Infinity]].map(function (b) {
+      var n = 0, amt = 0; APPS.forEach(function (a) { var v = num(ans(a, "G2")); if (v != null && v >= b[1] && v < b[2]) { n++; amt += v; } }); return { label: b[0], n: n, amt: amt, click: false };
+    });
+    g.appendChild(countChart("Size of the request", "Applications by amount requested", bands));
+    g.appendChild(countChart("Applicant type", "Organization or individual", tally(function (a) { return shortType(ans(a, "A1")); }),
+      function (i) { FILTER = { q: "", profile: "", route: "", country: "", type: i.label, sort: FILTER.sort }; location.hash = "#/"; }));
+    g.appendChild(countChart("Main measure of success (F1)", "What the project will count", tally(function (a) { return head1(ans(a, "F1")); })));
+    g.appendChild(countChart("Target stage (E12)", "Where the project aims to take Bitcoin use", tally(function (a) { return head1(ans(a, "E12")); })));
+    g.appendChild(countChart("Payment method preferred (G8)", "How they want to receive the grant", tally(function (a) { return head1(ans(a, "G8")); })));
+    m.appendChild(g);
+  }
+
+  /* ---------- help ---------- */
+  function helpCard(title, items) {
+    var c = el("div", "card"); c.appendChild(el("h3", null, title));
+    if (typeof items === "string") c.appendChild(el("p", null, items));
+    else { var ul = el("ul"); items.forEach(function (t) { ul.appendChild(el("li", null, t)); }); c.appendChild(ul); }
+    return c;
+  }
+  function renderHelp() {
+    var m = clear($("main")); m.appendChild(pageHead("Help", "A short guide to reading the applications."));
+    var h = el("div", "help");
+    h.appendChild(helpCard("Reading an application", ["Open Applications and click a row. Every question the applicant answered is shown, grouped by section (0 and A to K).", "Use the section list on the left to jump around. Previous and Next move through the applications in the order of your list.", "Attached documents open in a new tab with a link that expires after 5 minutes. Open the file again to get a fresh link."]));
+    h.appendChild(helpCard("Finding things", ["The search box looks inside every answer, not only the organization name: try a country, a person, an email or a word from the project.", "Combine it with the stage, route, country and type filters. Remove a filter by clicking its tag.", "In Overview, click a country or an applicant type to see just those applications."]));
+    h.appendChild(helpCard("What the labels mean", ["NEW: you have not opened that application yet on this browser.", "Initial / Established: the stage the form assigns from the answers to A1 and A2.", "New / Renewal: whether the applicant received a grant in 2026 (question A3)."]));
+    h.appendChild(helpCard("Export and print", ["Account menu (your initial, top right) → Export CSV downloads one row per application and one column per question. It respects the filters you have set.", "In an application, Print / PDF gives a clean copy to share with the committee."]));
+    h.appendChild(helpCard("What is not here", "This dashboard shows what the applicants answered. Eva's pre-review of each application is in the intake Google Sheet, not here. The committee decides."));
+    h.appendChild(helpCard("Access and privacy", ["Your code is personal. Do not share it: applications include identity documents and tax forms.", "The code is kept only while this tab is open. Sign out from the account menu when you finish on a shared computer.", "If you lose access or need a code, ask the person who manages the foundation's applications."]));
+    m.appendChild(h);
+  }
+
   /* ---------- CSV export ---------- */
   function csvCell(v) {
     var s = txt(v);
@@ -272,30 +506,37 @@
       ["profile", function (a) { return a.profile || ""; }], ["route", function (a) { return a.route || ""; }]];
     FIELDS.forEach(function (f) { cols.push([f.id + " " + f.label, function (a) { return ans(a, f.id); }]); });
     cols.push(["files", function (a) { return a.files.map(function (x) { return x.question + ": " + x.name; }).join("; "); }]);
-    var lines = [cols.map(function (c) { return csvCell(c[0]); }).join(",")];
-    filtered().forEach(function (a) { lines.push(cols.map(function (c) { return csvCell(c[1](a)); }).join(",")); });
+    var lines = [cols.map(function (c) { return csvCell(c[0]); }).join(",")], rows = filtered();
+    rows.forEach(function (a) { lines.push(cols.map(function (c) { return csvCell(c[1](a)); }).join(",")); });
     var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     var link = el("a"); link.href = URL.createObjectURL(blob); link.download = "applications-" + new Date().toISOString().slice(0, 10) + ".csv";
-    document.body.appendChild(link); link.click(); link.remove();
+    document.body.appendChild(link); link.click(); link.remove(); toast("Exported " + plural(rows.length, "application"));
   }
 
   /* ---------- wiring ---------- */
+  function closeMenu() { $("menu").hidden = true; $("usermenu").setAttribute("aria-expanded", "false"); }
+  $("usermenu").addEventListener("click", function (e) { e.stopPropagation(); var open = $("menu").hidden; $("menu").hidden = !open; $("usermenu").setAttribute("aria-expanded", String(open)); });
+  document.addEventListener("click", closeMenu);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+  $("export").addEventListener("click", function () { closeMenu(); exportCsv(); });
+  $("signout").addEventListener("click", function () { closeMenu(); APPS = []; LOADED = false; location.hash = ""; showLogin(""); });
   $("loginform").addEventListener("submit", function (e) {
     e.preventDefault();
     try { sessionStorage.setItem(SS_KEY, $("code").value.trim()); } catch (x) {}
     $("loginerr").textContent = "Checking…";
     load(false).then(function () { $("code").value = ""; $("loginerr").textContent = ""; }).catch(function () {});
   });
-  $("signout").addEventListener("click", function () { APPS = []; location.hash = ""; showLogin(""); });
-  $("refresh").addEventListener("click", function () { var b = $("refresh"); b.disabled = true; load(true).catch(function () {}).then(function () { b.disabled = false; }); });
-  $("export").addEventListener("click", exportCsv);
-  window.addEventListener("hashchange", function () { if (APPS.length || !$("app").hidden) route(); });
+  $("refresh").addEventListener("click", function () {
+    var b = $("refresh"); b.disabled = true; b.classList.add("spin");
+    load(true).then(function () { toast("Up to date"); }).catch(function () {}).then(function () { b.disabled = false; b.classList.remove("spin"); });
+  });
+  window.addEventListener("hashchange", function () { if (/^#s-/.test(location.hash)) return; route(); });
   window.setInterval(function () {                                  // new applications show up without pressing anything
-    if (document.visibilityState === "visible" && !$("app").hidden && !/^#\/./.test(location.hash)) load(true).catch(function () {});
+    if (document.visibilityState === "visible" && !$("app").hidden && !/^#\/APP-/.test(location.hash)) load(true).catch(function () {});
   }, 90000);
 
   var saved = ""; try { saved = sessionStorage.getItem(SS_KEY) || ""; } catch (e) {}
   if (!CFG.endpoint) { showLogin("The dashboard is not connected (no endpoint in config.js)."); }
-  else if (saved) { load(true).catch(function () { showLogin(""); }); }
+  else if (saved) { $("app").hidden = false; renderList(); load(true).catch(function () { showLogin(""); }); }
   else showLogin("");
 })();

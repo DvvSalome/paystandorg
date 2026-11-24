@@ -4,13 +4,15 @@ Read-only page where the team reads every application that arrives: all answers,
 Same palette and fonts as the site (`docs/brand.md`). URL: `<site>/admin/` (it carries `noindex`).
 
 ## What it shows
-- Tiles: applications received, total and average requested, Initial / Established, New / Renewal, countries.
-- List: organization, project, country, applicant type, stage, amount requested (G2), date, number of files. A "NEW" badge stays until that application is opened on that browser.
-- Filters: free text (searches inside ANY answer), profile, new/renewal, country, applicant type, sort.
-- Detail (click a row): header with key facts and one card per section (0, A–K) with every question and its answer. Tables for milestones (E10), other funders (G3) and budget (G4). Documents open through a link valid 5 minutes. "Print / save as PDF".
-- A question that does not apply to that applicant is skipped (and counted); a question with a stored answer is never hidden.
-- Export CSV: one row per application, one column per question (respects the filters). Cells that start with `= + - @` get a leading `'` so Excel does not run applicant text as a formula.
-- Refreshes by itself every 90 seconds while the list is open. Everything is written with `textContent`, never as HTML: applicants control this text.
+- **Navbar** (always visible): Applications (with a badge of how many you have not opened), Overview, Help, a refresh button and your account menu (Export CSV, Sign out).
+- **Applications**: tiles (received, total and average requested, Initial / Established, New / Renewal), a "last application" indicator, and the list: organization, project, country, applicant type, stage, amount requested (G2), date, files. A "NEW" badge stays until that application is opened on that browser.
+  - Search looks inside ANY answer. Filters: stage, new/renewal, country, applicant type, sort. Active filters show as tags you click to remove.
+- **Application detail** (click a row): header with key facts; a section list on the left that highlights the section you are reading (a scrolling strip on phones); one card per section (0, A–K) with every question and answer; tables for milestones (E10), other funders (G3) and budget (G4); documents open through a link valid 5 minutes. Previous / Next move through the list, plus Copy link and Print / PDF.
+  - A question that does not apply to that applicant is skipped (and counted); a question with a stored answer is never hidden.
+- **Overview**: eight charts (applications per day, stage and route, amount requested by country, size of the request, applicant type, main measure F1, target stage E12, payment method G8). Hover or focus a mark for its value; every chart can be viewed as a table; clicking a country or applicant type opens the filtered list. One series = one validated blue; the two-part bars use blue + orange with a legend that carries the counts.
+- **Help**: how to read an application, search, labels, export and privacy.
+- **Export CSV**: one row per application, one column per question (respects the filters). Cells that start with `= + - @` get a leading `'` so Excel does not run applicant text as a formula.
+- New applications show up by themselves (refresh every 90 seconds on the list, with a toast). Everything is written with `textContent`, never as HTML: applicants control this text.
 
 ## Access
 One personal code per person, kept in the Edge Function secret `ADMIN_CODES`:

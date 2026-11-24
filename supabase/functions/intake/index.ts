@@ -2,10 +2,12 @@
 //   POST /submit    -> validates, stores answers, returns signed upload URLs
 //   POST /finalize  -> checks uploads arrived, marks complete, sends confirmation email
 //   POST /draft/save, /draft/load -> save and resume an unfinished application with a code
+//   POST /admin/list, /admin/file -> read-only dashboard for the Paystand team (header x-admin-code)
 // Secrets (set with `supabase secrets set`, never in the repo):
 //   TURNSTILE_SECRET   optional until the captcha is enabled
 //   RESEND_API_KEY, EMAIL_FROM   optional, confirmation email
 //   ALLOWED_ORIGINS    comma-separated, e.g. https://apply.example.org
+//   ADMIN_CODES        "name:code,name:code", one long random code per person (16+ chars)
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected by Supabase.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import "../_shared/window-shim.js";   // must stay before questions.js
@@ -28,7 +30,7 @@ function cors(req: Request): Record<string, string> {
   const ok = allowed.length === 0 || allowed.includes(origin);
   return {
     "Access-Control-Allow-Origin": ok ? (allowed.length === 0 ? "*" : origin) : "null",
-    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Headers": "content-type, x-admin-code",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };
@@ -180,6 +182,44 @@ async function finalize(req: Request) {
   return json(req, 200, { ok: true });
 }
 
+// ---- Dashboard (read-only). Only the people listed in ADMIN_CODES get in. ----
+async function adminViewer(req: Request): Promise<{ who?: string; res?: Response }> {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+  const key = "adminfail:" + (await sha256(ip + (Deno.env.get("IP_SALT") || "")));
+  const since = new Date(Date.now() - 60 * 60_000).toISOString();
+  const { count } = await db.from("rate_events").select("id", { count: "exact", head: true }).eq("key", key).gte("at", since);
+  if ((count || 0) >= 10) return { res: json(req, 429, { error: "Too many wrong codes. Try again in an hour." }) };
+  const codes = parseCodes(Deno.env.get("ADMIN_CODES") || "");
+  const who = codes.length ? await findViewer(codes, req.headers.get("x-admin-code") || "", sha256) : null;
+  if (!who) { await db.from("rate_events").insert({ key }); return { res: json(req, 401, { error: "That access code is not valid." }) }; }
+  return { who };
+}
+
+async function adminList(req: Request) {
+  const a = await adminViewer(req); if (a.res) return a.res;
+  const { data: apps, error } = await db.from("applications")
+    .select("application_id, finalized_at, created_at, profile, route, answers")
+    .eq("status", "complete").order("finalized_at", { ascending: false }).limit(MAX_APPS);
+  if (error) return json(req, 500, { error: "Could not read the applications." });
+  const ids = (apps || []).map((x) => x.application_id);
+  const { data: files } = ids.length
+    ? await db.from("application_files").select("application_id, question, file_name, size_bytes, mime_type").in("application_id", ids)
+    : { data: [] };
+  const by = groupFiles(files || []);
+  return json(req, 200, { viewer: a.who, applications: (apps || []).map((x) => shapeApplication(x, by[x.application_id])) });
+}
+
+async function adminFile(req: Request) {
+  const a = await adminViewer(req); if (a.res) return a.res;
+  let body: any; try { body = await req.json(); } catch { return json(req, 400, { error: "Invalid JSON." }); }
+  const { data: f } = await db.from("application_files").select("storage_path, file_name")
+    .eq("application_id", String(body?.application_id || "")).eq("question", String(body?.question || "")).maybeSingle();
+  if (!f) return json(req, 404, { error: "File not found." });
+  const { data, error } = await db.storage.from(BUCKET).createSignedUrl(f.storage_path, 300, { download: f.file_name });
+  if (error || !data) return json(req, 500, { error: "Could not open the file." });
+  return json(req, 200, { url: data.signedUrl });          // link valid for 5 minutes
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(req) });
   if (req.method !== "POST") return json(req, 405, { error: "Method not allowed." });
@@ -189,6 +229,8 @@ Deno.serve(async (req) => {
     if (path.endsWith("/finalize")) return await finalize(req);
     if (path.endsWith("/draft/save")) return await draftRoute(req, "save");
     if (path.endsWith("/draft/load")) return await draftRoute(req, "load");
+    if (path.endsWith("/admin/list")) return await adminList(req);
+    if (path.endsWith("/admin/file")) return await adminFile(req);
     return json(req, 404, { error: "Not found." });
   } catch (e) {
     console.error(e);

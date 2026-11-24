@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Applications — Paystand Impact Foundation</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form class="card logincard" id="loginform" autocomplete="off">
+    <p class="kicker">Paystand Impact Foundation</p>
+    <h1>Grant Application 2027</h1>
+    <p class="muted">Team access. Enter your personal access code to read the applications.</p>
+    <label for="code">Access code</label>
+    <input id="code" type="password" autocomplete="off" spellcheck="false" required>
+    <button class="btn primary" type="submit">Open dashboard</button>
+    <p id="loginerr" class="err" role="alert"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header class="top">
+    <div class="wrap topin">
+      <div>
+        <p class="kicker">Paystand Impact Foundation</p>
+        <h1>Grant Application 2027 <span class="thin">· Applications</span></h1>
+      </div>
+      <div class="topact">
+        <span id="viewer" class="muted-on-navy"></span>
+        <button class="btn ghost" id="refresh" type="button">Refresh</button>
+        <button class="btn ghost" id="export" type="button">Export CSV</button>
+        <button class="btn ghost" id="signout" type="button">Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap" id="main"></main>
+</div>
+<noscript><p class="wrap">This page needs JavaScript.</p></noscript>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/questions.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

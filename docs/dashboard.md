@@ -1,0 +1,41 @@
+# Dashboard for the Paystand team (`site/admin/`)
+
+Read-only page where the team reads every application that arrives: all answers, section by section, with the documents.
+Same palette and fonts as the site (`docs/brand.md`). URL: `<site>/admin/` (it carries `noindex`).
+
+## What it shows
+- Tiles: applications received, total and average requested, Initial / Established, New / Renewal, countries.
+- List: organization, project, country, applicant type, stage, amount requested (G2), date, number of files. A "NEW" badge stays until that application is opened on that browser.
+- Filters: free text (searches inside ANY answer), profile, new/renewal, country, applicant type, sort.
+- Detail (click a row): header with key facts and one card per section (0, A–K) with every question and its answer. Tables for milestones (E10), other funders (G3) and budget (G4). Documents open through a link valid 5 minutes. "Print / save as PDF".
+- A question that does not apply to that applicant is skipped (and counted); a question with a stored answer is never hidden.
+- Export CSV: one row per application, one column per question (respects the filters). Cells that start with `= + - @` get a leading `'` so Excel does not run applicant text as a formula.
+- Refreshes by itself every 90 seconds while the list is open. Everything is written with `textContent`, never as HTML: applicants control this text.
+
+## Access
+One personal code per person, kept in the Edge Function secret `ADMIN_CODES`:
+
+    ana:a-long-random-code,luis:another-long-random-code
+
+- Supabase → Edge Functions → Secrets → add `ADMIN_CODES`. Codes under 16 characters are ignored.
+- Generate each code with a password manager (20+ random characters). To revoke someone, delete their entry.
+- The browser keeps the code only in `sessionStorage` (gone when the tab closes). 10 wrong codes in an hour from one IP lock that IP out for the hour.
+- Never put a code in the repo, in `config.js` or in chat.
+- The page itself holds no data: without a valid code `/admin/list` answers 401.
+
+## API (Edge Function `intake`)
+- `POST /admin/list` (header `x-admin-code`) → `{ viewer, applications: [{ application_id, finalized_at, profile, route, answers, files: [{question, name, size, type}] }] }`. Only `status = 'complete'`, newest first, up to 1000. Storage paths never leave the server.
+- `POST /admin/file` `{ application_id, question }` → `{ url }` (signed, 5 minutes).
+
+## Deploy
+1. Supabase → Edge Functions → `intake` → paste `dist/intake-function.ts` → Deploy.
+2. Add the secret `ADMIN_CODES`.
+3. Redeploy `site/` on Vercel. Open `<site>/admin/`.
+
+## Tests
+`node tests/admin.test.mjs` (access logic). `node tests/admin-dashboard.js <payload.json> <dir>` (browser: login, list, search, filters, detail, hostile text, CSV, 390 px) with the site served on :8099.
+
+## Limits and next steps
+- The dashboard shows what the applicants answered. Eva's result (score, traffic light, flags) lives in the intake Google Sheet; showing it here needs a read path from Eva's pipeline (not built).
+- Above ~1000 applications the list needs paging (the API caps at 1000).
+- Access by code is simple and revocable. If the team grows, move to Supabase Auth with an allow-list of emails.

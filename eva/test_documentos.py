@@ -158,7 +158,7 @@ def setup(m, tmp, drive_ref):
     m.fetch_source_rows = lambda sheets_api, sheet_id, config, since_ts=None: (*source_rows(m), "supabase")
     m.get_existing_app_ids = lambda *a, **k: set()
     m.get_existing_app_timestamps = lambda *a, **k: {}
-    m.load_grantee_registry = lambda: REGISTRY
+    m.load_grantee_registry = lambda *a, **k: REGISTRY
     m.load_seguimiento_2027 = lambda: []
     m.load_tracker_listas = lambda: {}
     m.add_grantee_to_registry_tab = lambda *a, **k: None

@@ -356,6 +356,41 @@ HARD_GATE_FLAGS = [
     "disclosure_present", "missing_legal_name",
 ]
 
+# Document checks that cap the semáforo at YELLOW (decision 2026-11-16). A
+# registration document (C1) that does not carry the legal name or address
+# is not proof the organization exists: APP-2027-0002 came out GREEN with an
+# AI-generated image as C1 and a next step of "Approve for committee review".
+# Not RED: reading text from an image or scan can fail on a genuine document,
+# so this asks for verification rather than holding the case.
+DOCUMENT_CAP_FLAGS = ["name_mismatch", "address_mismatch"]
+
+# People nouns that make a number in E1 a participant count ("60 women").
+PARTICIPANT_NOUNS = (
+    "people|persons|participants|beneficiaries|women|men|youth|young people|"
+    "students|merchants|vendors|artisans|farmers|families|households|members|"
+    "entrepreneurs|workers|children|teachers|leaders|"
+    "personas|participantes|beneficiarios|beneficiarias|mujeres|hombres|"
+    "jóvenes|jovenes|estudiantes|comerciantes|vendedores|vendedoras|artesanas|"
+    "artesanos|agricultores|familias|hogares|miembros|socios|socias|"
+    "emprendedores|emprendedoras|trabajadores|niños|ninos|docentes|líderes|lideres"
+)
+_PARTICIPANT_RE = re.compile(
+    r"\b(\d{1,3}(?:[.,]\d{3})*|\d+)\s+(?:[\w-]+\s+){0,2}?(?:" + PARTICIPANT_NOUNS + r")\b",
+    re.IGNORECASE,
+)
+
+
+def participant_counts_in_text(text):
+    """Numbers in a text that are followed (within two words) by a people noun."""
+    out = []
+    for m in _PARTICIPANT_RE.finditer(text or ""):
+        try:
+            out.append(int(re.sub(r"[.,]", "", m.group(1))))
+        except ValueError:
+            pass
+    return out
+
+
 # Eligibility checklist (0.2). Four statements; the form lets an applicant
 # continue with fewer if they explain in K2 (decision 2026-11-13), on the
 # understanding that Eva sends any incomplete checklist to manual review. That
@@ -782,12 +817,32 @@ def acquire_run_lock(path=None, info=None):
 
 # ─── P0 Guardrails: Slack notification + Idempotency ───────────────────────
 
+# Which environment this run is, for notifications. Set by run_pipeline.
+# Until 2026-11-16 a test run posted to #foundation-ops like production; tests
+# were kept quiet only by putting a fake `openclaw` first on the PATH.
+NOTIFY_ENV = None
+
+
+def slack_enabled(env, env_config=None):
+    """Production notifies; test only if its config says notify_slack: true."""
+    if env == "production":
+        return True
+    return bool((env_config or {}).get("notify_slack", False))
+
+
+NOTIFY_ON = False
+
+
 def send_slack_notification(message, is_error=False):
     """
     Send a notification to Eva's Slack channel.
     Uses the openclaw message tool via CLI if available, otherwise logs to stderr.
     Never raises — notification failures must not break the pipeline.
+    Silent outside production unless that environment opts in (NOTIFY_ON).
     """
+    if not NOTIFY_ON:
+        print(f"[NOTIFY skipped: {NOTIFY_ENV or 'no environment'}] {message}", file=sys.stderr)
+        return
     try:
         prefix = "🔴 INTAKE ERROR" if is_error else "✅ INTAKE COMPLETE"
         full_msg = f"{prefix}: {message}"
@@ -834,13 +889,45 @@ def get_existing_app_ids(sheets_api, spreadsheet_id):
 
 # ─── Grantee Registry ──────────────────────────────────────────────────────
 
-def load_grantee_registry():
-    """Load the grantee registry JSON (pre-populated from Master Tracker)."""
-    registry_path = CONFIG_DIR / "grantee_registry.json"
-    if registry_path.exists():
-        with open(registry_path) as f:
+def registry_path(env):
+    """
+    One registry file per environment. Until 2026-11-16 both shared
+    data/grantee_registry.json, so every test run added its fictitious
+    grantees (GR-2027-001 DEMO, GR-2027-002 ...) to the file production reads:
+    production would then number real grantees after them, and could match a
+    real applicant to a test entry as a renewal. The four junk entries cleaned
+    on 2026-11-13 came from this.
+    """
+    if env not in ENVIRONMENTS:
+        raise ValueError(f"registry_path: unknown environment {env!r}")
+    if env == "production":
+        return CONFIG_DIR / "grantee_registry.json"
+    return CONFIG_DIR / f"grantee_registry.{env}.json"
+
+
+def load_grantee_registry(env):
+    """
+    Load the grantee registry JSON (pre-populated from Master Tracker).
+    Test starts from the production file when it has none of its own, so it
+    still recognises real 2026 grantees as renewals; from then on it only
+    writes its own copy.
+    """
+    path = registry_path(env)
+    if not path.exists() and env != "production":
+        path = registry_path("production")
+    if path.exists():
+        with open(path) as f:
             return json.load(f)
     return []
+
+
+def save_grantee_registry(env, registry):
+    path = registry_path(env)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, 'w') as f:
+        json.dump(registry, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
 
 
 def load_seguimiento_2027():
@@ -1212,6 +1299,8 @@ FLAG_EXPLANATIONS = {
     "suspected_participant_identifiers": "A paragraph looks like it contains a participant list; only aggregate figures should be sent.",
     "duplicate_application": "Another application in this batch has the same legal name or contact email.",
     "documents_not_stored": "Some uploaded documents could not be copied to the applicant's folder.",
+    "participant_count_mismatch": "The participant count in the project description (E1) differs from the number given in E5.",
+    "stage_needs_review": "The stage Eva inferred is above the target the applicant declared (E12); the inference likely read plans as the present.",
     "nonsense_empty_required": "A required answer is empty.",
     "nonsense_short_answer": "A paragraph answer is shorter than the 15-word minimum.",
     "nonsense_one_word": "A paragraph question was answered with one word.",
@@ -1257,7 +1346,8 @@ def assessment_html(app, board_url=""):
     hold = sc.get("Semaforo_Hold", "")
     h.append("<h2>1. Summary</h2><ul>")
     h.append(f"<li><b>Traffic light: {_html(sc.get('Semaforo', ''))}</b>"
-             + (f" — held red by: {_html(hold)}" if hold else "") + "</li>")
+             + ((f" — held red by: {_html(hold)}" if sc.get('Semaforo') == "RED"
+                 else f" — capped at yellow: {_html(hold)}") if hold else "") + "</li>")
     h.append(f"<li>By score alone: {_html(sc.get('Semaforo_By_Score', ''))}, "
              f"{_html(sc.get('Total_Normalized', ''))} / 100"
              f" (raw {_html(sc.get('Total_Score', ''))} of {_html(sc.get('Score_Max_Available', ''))} available)</li>")
@@ -2759,7 +2849,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
     wm_before = wm['last_timestamp']
 
     # Load grantee registry and seguimiento data
-    registry = load_grantee_registry()
+    registry = load_grantee_registry(config['active_env'])
     seguimiento = load_seguimiento_2027()
     listas = load_tracker_listas()
 
@@ -3011,8 +3101,7 @@ def step_ingest(sheets_api, drive_api, config, scorecard_cfg, run_id, trigger_ty
         }, f, indent=2, ensure_ascii=False)
 
     # Save updated registry
-    with open(CONFIG_DIR / "grantee_registry.json", 'w') as f:
-        json.dump(registry, f, indent=2, ensure_ascii=False)
+    save_grantee_registry(config['active_env'], registry)
 
     warnings_list = []
     if new_grantees_created > 0:
@@ -3919,6 +4008,29 @@ def step_flag(applications, run_id, drive_api=None):
                 flags["renewal_discrepancy"] = "PENDING"
                 flags_detail.append("renewal_validation_pending")
 
+        # Participant count: E1 vs E5 (decision 2026-11-16). APP-2027-0002
+        # described 60 women in E1 and gave 18 in E5; cost per participant is
+        # computed from E5, so the mismatch changes it by a factor of three.
+        try:
+            e5 = int(float(str(f.get("E5", "")).replace(",", "").strip()))
+        except ValueError:
+            e5 = None
+        e1_counts = participant_counts_in_text(f.get("E1", ""))
+        if e5 and e1_counts and e5 not in e1_counts:
+            flags["participant_count_mismatch"] = "YES"
+            flags_detail.append(
+                f"participant_count_mismatch: E1 says {'/'.join(str(n) for n in e1_counts)}, E5 says {e5}"
+            )
+
+        # Inferred stage above the declared target (decision 2026-11-16).
+        jump = app.get('classified', {}).get("Stage_Jump", "")
+        if isinstance(jump, int) and jump < 0:
+            c_ = app['classified']
+            flags["stage_needs_review"] = "YES"
+            flags_detail.append(
+                f"stage_needs_review: inferred {c_.get('Stage_Suggested','')} is above target {c_.get('Stage_Target','')}"
+            )
+
         # Build flag row
         all_flag_keys = [
             "nonsense_repeated_text", "nonsense_random_chars", "nonsense_one_word",
@@ -3934,6 +4046,7 @@ def step_flag(applications, run_id, drive_api=None):
             "bitcoin_rule_violation", "budget_invalid", "high_dependency",
             "suspected_participant_identifiers",
             "missing_legal_name", "documents_not_stored",
+            "participant_count_mismatch", "stage_needs_review",
         ]
         # Any flag raised that is still not listed is counted too, rather than
         # dropped: a new check must not be invisible because this list was not
@@ -4174,7 +4287,15 @@ def step_score(applications, scorecard_cfg, run_id):
 
         stage_pts = 0
         stage_bits = []
-        if stage:
+        jump = classified.get("Stage_Jump", "")
+        if stage and isinstance(jump, int) and jump < 0:
+            # The inference contradicts the applicant's own target; points for
+            # it would reward the error (decision 2026-11-16).
+            stage_bits.append(
+                f"stage inferred={stage} is above the declared target "
+                f"{classified.get('Stage_Target', '')} — needs review (0pts)"
+            )
+        elif stage:
             stage_pts += 4
             stage_bits.append(f"stage inferred={stage} (4pts)")
         else:
@@ -4651,7 +4772,15 @@ def step_score(applications, scorecard_cfg, run_id):
         else:
             gates = [g for g in HARD_GATE_FLAGS if app_flags.get(g) == "YES"]
             score_row["Semaforo_Hold"] = ", ".join(gates)
-        score_row["Semaforo"] = "RED" if gates else by_score
+        caps = [] if app_flags is None else [
+            g for g in DOCUMENT_CAP_FLAGS if app_flags.get(g) == "YES"]
+        if gates:
+            score_row["Semaforo"] = "RED"
+        elif caps and by_score == "GREEN":
+            score_row["Semaforo"] = "YELLOW"
+            score_row["Semaforo_Hold"] = "verify documents: " + ", ".join(caps)
+        else:
+            score_row["Semaforo"] = by_score
 
         notes = [f"4 criteria scored deterministically. Total {total_score}/{max_available}."]
         if max_available != 100:
@@ -4938,7 +5067,8 @@ TAB_COLUMNS = {
         "duplicate_application", "renewal_discrepancy", "eligibility_incomplete",
         "child_protection_missing", "disclosure_present", "bitcoin_rule_violation",
         "budget_invalid", "high_dependency", "suspected_participant_identifiers",
-        "missing_legal_name", "documents_not_stored", "Has_Flags", "Flags_Count",
+        "missing_legal_name", "documents_not_stored", "participant_count_mismatch",
+        "stage_needs_review", "Has_Flags", "Flags_Count",
         "Critical_Flags_Count", "Flags_Detail",
     ],
     TAB_SCORE: [
@@ -5229,6 +5359,12 @@ def step_write(sheets_api, applications, package_rows, config, run_id, all_logs,
         last_app = applications[-1]
         wm['last_timestamp'] = last_app['timestamp']
         wm['last_run_id'] = run_id
+        # The counters live here too. Until 2026-11-16 step_ingest updated them
+        # on its own copy, which this reload discarded, so total_processed
+        # stayed at 0 forever. It seeds generated App_IDs, so a run without a
+        # form-supplied ID would mint APP-2027-0001 again and collide.
+        wm['total_processed'] = wm.get('total_processed', 0) + len(applications)
+        wm['last_row'] = wm.get('last_row', 0) + len(applications)
         save_watermark(env, wm)
         print(f"  Watermark updated ({env}): {wm['last_timestamp']}")
 
@@ -5391,6 +5527,8 @@ def run_pipeline(args):
     env = args.environment or 'test'
     config['active'] = config[env]
     config['active_env'] = env
+    global NOTIFY_ENV, NOTIFY_ON
+    NOTIFY_ENV, NOTIFY_ON = env, slack_enabled(env, config[env])
 
     sheets_api = get_sheets_service()
     drive_api = get_drive_service()

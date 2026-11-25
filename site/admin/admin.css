@@ -22,14 +22,13 @@ button { font-family: inherit; }
 .skip { position: absolute; left: -999px; top: 8px; background: #fff; padding: 8px 14px; border-radius: 8px; z-index: 50; }
 .skip:focus { left: 8px; }
 :focus-visible { outline: 3px solid #2F6FB3; outline-offset: 2px; }
-.logo { font-family: var(--head); font-size: 1.45rem; letter-spacing: -.01em; color: #fff; line-height: 1; }
-.logo span { color: var(--orange); }
 
 /* ---------- navbar ---------- */
 .nav { position: sticky; top: 0; z-index: 20; background: var(--navy); color: #fff; border-bottom: 3px solid var(--orange); }
 .navin { display: flex; align-items: center; gap: 8px 28px; min-height: 64px; flex-wrap: wrap; }
-.brand { display: flex; align-items: baseline; gap: 10px; text-decoration: none; color: #fff; padding: 12px 0; }
-.brandsub { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: #C9D4EE; }
+.brand { display: flex; align-items: center; text-decoration: none; padding: 16px 0; }
+.navlogo { height: 32px; width: auto; display: block; }
+.loginlogo { height: 40px; width: auto; align-self: start; margin-bottom: 6px; }
 .tabs { display: flex; gap: 4px; align-self: stretch; }
 .tabs a { display: flex; align-items: center; gap: 8px; padding: 0 16px; color: #D5DCF0; text-decoration: none; font-weight: 600; font-size: .96rem; border-bottom: 3px solid transparent; margin-bottom: -3px; }
 .tabs a:hover { color: #fff; background: rgba(255,255,255,.07); }
@@ -61,7 +60,6 @@ input[type=password], input[type=search], select { font-size: 1rem; font-family:
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(180deg, var(--navy) 0 38%, var(--bg) 38%); }
 .card { background: var(--card); border-radius: 20px; box-shadow: 0 4px 24px rgba(0,27,91,.08); }
 .logincard { width: min(440px, 100%); padding: 32px; display: grid; gap: 10px; box-shadow: 0 12px 48px rgba(0,27,91,.25); }
-.logincard .logo { color: var(--navy); font-size: 1.7rem; }
 .logincard h1 { font-size: 1.8rem; }
 .logincard label { font-weight: 600; font-size: .92rem; margin-top: 8px; }
 .err { color: var(--err); margin: 0; min-height: 1.4em; font-size: .92rem; }
@@ -190,7 +188,7 @@ td.num, th.num { text-align: right; white-space: nowrap; }
   .sec { scroll-margin-top: 130px; }
 }
 @media (max-width: 760px) {
-  .navin { gap: 0 12px; } .brandsub { display: none; }
+  .navin { gap: 0 12px; } .navlogo { height: 28px; } .brand { padding: 14px 0; }
   .tabs { order: 3; width: 100%; overflow-x: auto; margin: 0 -4px; } .tabs a { padding: 12px 14px; margin-bottom: 0; }
   thead { display: none; }
   table.main, table.main tbody, table.main tr, table.main td { display: block; width: 100%; }

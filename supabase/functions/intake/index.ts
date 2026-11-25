@@ -191,7 +191,10 @@ async function adminViewer(req: Request): Promise<{ who?: string; res?: Response
   if ((count || 0) >= 10) return { res: json(req, 429, { error: "Too many wrong codes. Try again in an hour." }) };
   const codes = parseCodes(Deno.env.get("ADMIN_CODES") || "");
   const who = codes.length ? await findViewer(codes, req.headers.get("x-admin-code") || "", sha256) : null;
-  if (!who) { await db.from("rate_events").insert({ key }); return { res: json(req, 401, { error: "That access code is not valid." }) }; }
+  if (!who) {
+    // Why it failed, for the function logs only (never the code itself): how many valid ADMIN_CODES entries were read, and how long the code sent was.
+    console.log(`admin auth failed: valid ADMIN_CODES entries=${codes.length}, code length sent=${(req.headers.get("x-admin-code") || "").length}`);
+    await db.from("rate_events").insert({ key }); return { res: json(req, 401, { error: "That access code is not valid." }) }; }
   return { who };
 }
 

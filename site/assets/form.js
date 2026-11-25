@@ -1241,7 +1241,9 @@
     var files = {};
     Object.keys(FILES).forEach(function (id) { files[id] = FILES[id].name; });
     Object.keys(savedFiles).forEach(function (id) { if (!files[id] && !FILES[id]) files[id] = savedFiles[id]; });
-    return { v: 1, fields: fields, files: files, email: V.D1__email || "" };
+    // `answers` = what a submission would carry right now, so the team dashboard can show a draft exactly like an
+    // application. `fields` (control values) is what restore() replays; older drafts only have `fields`.
+    return { v: 1, fields: fields, files: files, email: V.D1__email || "", answers: payload().answers };
   }
 
   function fire(n, t) { n.dispatchEvent(new Event(t, { bubbles: true })); }

@@ -686,12 +686,32 @@ function groupFiles(rows) {
   return by;
 }
 
+// ---- Drafts (unfinished applications) ----
+const MAX_DRAFTS = 500;
+
+// A draft as the dashboard needs it. The resume code is NEVER included: whoever has it can open and overwrite the
+// applicant's draft. `id` is a short hash of the code, enough to link to a draft inside the dashboard.
+function shapeDraft(row, id) {
+  const st = row.state && typeof row.state === "object" && !Array.isArray(row.state) ? row.state : {};
+  const answers = st.answers && typeof st.answers === "object" && !Array.isArray(st.answers) ? st.answers : null;
+  return {
+    id,
+    email: row.email || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    saved_sections: Array.isArray(row.saved_sections) ? row.saved_sections : [],
+    files: st.files && typeof st.files === "object" && !Array.isArray(st.files) ? st.files : {},   // names only: drafts do not keep files
+    answers,                                                  // newer drafts carry the answers as the form built them
+    fields: answers ? null : (st.fields && typeof st.fields === "object" ? st.fields : {}),   // older drafts: control values to decode
+  };
+}
+
 // ---- function ----
 // Edge Function "intake": receives Grant Application 2027 submissions.
 //   POST /submit    -> validates, stores answers, returns signed upload URLs
 //   POST /finalize  -> checks uploads arrived, marks complete, sends confirmation email
 //   POST /draft/save, /draft/load -> save and resume an unfinished application with a code
-//   POST /admin/list, /admin/file -> read-only dashboard for the Paystand team (header x-admin-code)
+//   POST /admin/list, /admin/drafts, /admin/file -> read-only dashboard for the Paystand team (header x-admin-code)
 // Secrets (set with `supabase secrets set`, never in the repo):
 //   TURNSTILE_SECRET   optional until the captcha is enabled
 //   RESEND_API_KEY, EMAIL_FROM   optional, confirmation email
@@ -896,6 +916,16 @@ async function adminList(req: Request) {
   return json(req, 200, { viewer: a.who, applications: (apps || []).map((x) => shapeApplication(x, by[x.application_id])) });
 }
 
+async function adminDrafts(req: Request) {
+  const a = await adminViewer(req); if (a.res) return a.res;
+  const { data, error } = await db.from("drafts").select("code, state, saved_sections, email, created_at, updated_at")
+    .order("updated_at", { ascending: false }).limit(MAX_DRAFTS);
+  if (error) return json(req, 500, { error: "Could not read the drafts." });
+  const out = [];
+  for (const row of data || []) out.push(shapeDraft(row, (await sha256("draft:" + row.code)).slice(0, 12)));   // the code itself never leaves
+  return json(req, 200, { drafts: out });
+}
+
 async function adminFile(req: Request) {
   const a = await adminViewer(req); if (a.res) return a.res;
   let body: any; try { body = await req.json(); } catch { return json(req, 400, { error: "Invalid JSON." }); }
@@ -917,6 +947,7 @@ Deno.serve(async (req) => {
     if (path.endsWith("/draft/save")) return await draftRoute(req, "save");
     if (path.endsWith("/draft/load")) return await draftRoute(req, "load");
     if (path.endsWith("/admin/list")) return await adminList(req);
+    if (path.endsWith("/admin/drafts")) return await adminDrafts(req);
     if (path.endsWith("/admin/file")) return await adminFile(req);
     return json(req, 404, { error: "Not found." });
   } catch (e) {

@@ -52,3 +52,23 @@ export function groupFiles(rows) {
   for (const f of rows || []) (by[f.application_id] = by[f.application_id] || []).push(f);
   return by;
 }
+
+// ---- Drafts (unfinished applications) ----
+export const MAX_DRAFTS = 500;
+
+// A draft as the dashboard needs it. The resume code is NEVER included: whoever has it can open and overwrite the
+// applicant's draft. `id` is a short hash of the code, enough to link to a draft inside the dashboard.
+export function shapeDraft(row, id) {
+  const st = row.state && typeof row.state === "object" && !Array.isArray(row.state) ? row.state : {};
+  const answers = st.answers && typeof st.answers === "object" && !Array.isArray(st.answers) ? st.answers : null;
+  return {
+    id,
+    email: row.email || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    saved_sections: Array.isArray(row.saved_sections) ? row.saved_sections : [],
+    files: st.files && typeof st.files === "object" && !Array.isArray(st.files) ? st.files : {},   // names only: drafts do not keep files
+    answers,                                                  // newer drafts carry the answers as the form built them
+    fields: answers ? null : (st.fields && typeof st.fields === "object" ? st.fields : {}),   // older drafts: control values to decode
+  };
+}

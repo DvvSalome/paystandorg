@@ -17,3 +17,14 @@ const s = shapeApplication({ application_id: "A", answers: { B1: "x" }, finalize
 assert.deepEqual(Object.keys(s).sort(), ["answers", "application_id", "created_at", "files", "finalized_at", "profile", "route"]);
 assert.equal(s.files[0].storage_path, undefined);                            // storage paths never leave the server
 console.log("admin: ok");
+
+// drafts
+import { shapeDraft } from "../supabase/functions/_shared/admin.js";
+const old = shapeDraft({ code: "GA27-AAA-BBB-CCC", email: "a@b.org", created_at: "c", updated_at: "u", saved_sections: ["A"], state: { v: 1, fields: { B1: ["x"] }, files: { C1: "a.pdf" } } }, "abc123");
+assert.equal(JSON.stringify(old).includes("GA27-"), false);                 // the resume code never leaves the server
+assert.deepEqual(old.fields, { B1: ["x"] }); assert.equal(old.answers, null); assert.deepEqual(old.files, { C1: "a.pdf" });
+const neu = shapeDraft({ code: "GA27-AAA-BBB-CCC", state: { fields: { B1: ["x"] }, answers: { B1: "x" } } }, "id2");
+assert.deepEqual(neu.answers, { B1: "x" }); assert.equal(neu.fields, null);   // answers present: the control dump is dropped
+const bad = shapeDraft({ code: "x", state: "nope", saved_sections: null }, "id3");
+assert.deepEqual([bad.fields, bad.answers, bad.saved_sections, bad.files], [{}, null, [], {}]);
+console.log("admin drafts: ok");

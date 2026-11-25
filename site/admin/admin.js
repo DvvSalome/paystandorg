@@ -6,7 +6,7 @@
   var SECTIONS = G.SECTIONS, FIELDS = G.FIELDS;
   var SS_KEY = "ga27-admin-code", SEEN_KEY = "ga27-admin-seen";
   var MONEY = { B5: 1, G1: 1, G2: 1 };
-  var APPS = [], VIEWER = "", UPDATED = null, LOADED = false;
+  var APPS = [], DRAFTS = null, VIEWER = "", UPDATED = null, LOADED = false;      // DRAFTS stays null if the server has no drafts route yet
   var FILTER = { q: "", profile: "", route: "", country: "", type: "", sort: "new" };
   var spy = null;
 
@@ -66,7 +66,10 @@
   }
   function load(silent) {
     var before = APPS.map(function (a) { return a.application_id; });
+    var dp = api("/admin/drafts").then(function (d) { return d.drafts || []; }, function () { return null; });
     return api("/admin/list").then(function (j) {
+      return dp.then(function (d) { DRAFTS = d; return j; });
+    }).then(function (j) {
       APPS = j.applications || []; VIEWER = j.viewer || ""; UPDATED = new Date(); LOADED = true;
       $("login").hidden = true; $("app").hidden = false;
       $("viewer").textContent = VIEWER ? "Signed in as " + VIEWER : ""; $("avatarletter").textContent = (VIEWER || "?").charAt(0);
@@ -124,8 +127,12 @@
     var h = decodeURIComponent((location.hash || "").replace(/^#\/?/, ""));
     window.scrollTo(0, 0);
     var n = unseenCount(); $("navcount").textContent = n ? String(n) : "";
+    var nd = activeDrafts().length; $("navdrafts").textContent = nd ? String(nd) : "";
     if (h === "overview") { setTab("overview"); renderOverview(); return; }
     if (h === "help") { setTab("help"); renderHelp(); return; }
+    if (h === "drafts") { setTab("drafts"); renderDrafts(); return; }
+    var dm = /^draft\/(.+)$/.exec(h), dr = dm && (DRAFTS || []).filter(function (x) { return x.id === dm[1]; })[0];
+    if (dr) { setTab("drafts"); renderDraft(dr); return; }
     var a = /^APP-/.test(h) && APPS.filter(function (x) { return x.application_id === h; })[0];
     if (a) { setTab("apps"); renderDetail(a); return; }
     setTab("apps"); renderList();
@@ -166,6 +173,11 @@
     tiles.appendChild(tile(money(total), "Total requested", APPS.length ? "Average " + money(total / APPS.length) : ""));
     tiles.appendChild(tile(countBy(function (a) { return a.profile; }, "Initial") + " / " + countBy(function (a) { return a.profile; }, "Established"), "Initial / Established"));
     tiles.appendChild(tile(countBy(function (a) { return a.route; }, "New") + " / " + countBy(function (a) { return a.route; }, "Renewal"), "New / Renewal"));
+    if (DRAFTS !== null) {                                    // started but not submitted: one click to see them
+      var dt = tile(String(activeDrafts().length), "Drafts in progress", "Started, not submitted · view"); dt.className += " link"; dt.tabIndex = 0; dt.setAttribute("role", "link");
+      dt.addEventListener("click", function () { location.hash = "#/drafts"; }); dt.addEventListener("keydown", function (e) { if (e.key === "Enter") location.hash = "#/drafts"; });
+      tiles.appendChild(dt);
+    }
     m.appendChild(tiles);
 
     var tb = el("div", "toolbar");
@@ -283,20 +295,28 @@
     rail.setAttribute("aria-label", "Sections"); rail.appendChild(el("p", "rt", "Sections"));
     lay.appendChild(rail); lay.appendChild(body); m.appendChild(lay);
 
+    buildSections(a, body, rail, false);
+  }
+
+  // One card per section. For a draft only the questions already answered are shown (and the rest are counted).
+  function buildSections(a, body, rail, isDraft) {
     var V = a.answers, ST = { profile: a.profile || "—" }, boxes = [];
     SECTIONS.forEach(function (sec) {
       var fs = FIELDS.filter(function (f) { return f.s === sec.id; });
+      function has(f) { return (V[f.id] != null && txt(V[f.id]).trim() !== "") || (isDraft ? !!(a.draftFiles && a.draftFiles[f.id]) : a.files.some(function (x) { return x.question === f.id; })); }
       // A question is hidden only if its rule says "does not apply" AND it has no stored answer: nothing saved is ever hidden.
       var shown = fs.filter(function (f) {
-        var has = (V[f.id] != null && txt(V[f.id]).trim() !== "") || a.files.some(function (x) { return x.question === f.id; });
-        try { return !f.showIf || !!f.showIf(V, ST) || has; } catch (e) { return true; }
+        if (isDraft) return has(f);
+        try { return !f.showIf || !!f.showIf(V, ST) || has(f); } catch (e) { return true; }
       });
       var hidden = fs.length - shown.length;
+      if (isDraft && !shown.length) { hidden = 0; }
       var box = el("section", "card sec"); box.id = "s-" + sec.id;
       box.appendChild(el("div", "secid", "Section " + sec.id));
       box.appendChild(el("h3", null, sec.title));
+      if (isDraft && !shown.length) box.appendChild(el("p", "na", "Nothing answered in this section yet."));
       shown.forEach(function (f) { box.appendChild(renderQuestion(a, f)); });
-      if (hidden) box.appendChild(el("p", "na", plural(hidden, "question") + " in this section did not apply to this applicant."));
+      if (hidden) box.appendChild(el("p", "na", isDraft ? plural(hidden, "question") + " here not answered yet." : plural(hidden, "question") + " in this section did not apply to this applicant."));
       body.appendChild(box); boxes.push(box);
       var link = el("a"); link.href = "#s-" + sec.id; link.appendChild(el("i", null, sec.id)); link.appendChild(document.createTextNode(sec.title));
       link.addEventListener("click", function (e) { e.preventDefault(); box.scrollIntoView({ behavior: "smooth", block: "start" }); });
@@ -330,7 +350,10 @@
     var body = el("div", "a"), v = a.answers[f.id], has = v != null && txt(v).trim() !== "";
     var files = a.files.filter(function (x) { return x.question === f.id; });
 
-    if (f.type === "file" || files.length) {
+    if (a.draftFiles && f.type === "file") {                   // a draft keeps only the file name: the file itself is never stored
+      if (a.draftFiles[f.id]) body.textContent = "Attached before saving: " + a.draftFiles[f.id] + " (not stored in the draft)";
+      else { body.className = "a none"; body.textContent = "No file attached"; }
+    } else if (f.type === "file" || files.length) {
       files.forEach(function (fl) {
         var w = el("span", "file"); w.appendChild(el("span", null, fl.name + " (" + kb(fl.size) + ")"));
         var b = el("button", "btn small", "Open"); b.type = "button";
@@ -364,6 +387,179 @@
       body.textContent = MONEY[f.id] && num(v) != null ? money(num(v)) : txt(v);
     } else { body.className = "a none"; body.textContent = "No answer"; }
     q.appendChild(body); return q;
+  }
+
+  /* ---------- drafts (applications started and not submitted) ---------- */
+  var DRAFT_TTL_MS = 60 * 86400000;
+  function nonEmpty(v) { return v != null && txt(v).trim() !== ""; }
+  // Older drafts only kept the value of every control, in the order the form builds them. Rebuild the answers the
+  // way the form does (see site/assets/form.js). Newer drafts carry `answers` and skip this.
+  function decodeFields(fields) {
+    var A = {};
+    FIELDS.forEach(function (f) {
+      var v = fields[f.id]; if (!v) return;
+      function s(i) { return v[i] == null ? "" : String(v[i]); }
+      var id = f.id, t = f.type, i, rows, r;
+      if (t === "text" || t === "email" || t === "url" || t === "textarea" || t === "number" || t === "country") { if (s(0).trim()) A[id] = s(0); }
+      else if (t === "radio") { i = v.indexOf(1); if (i >= 0 && f.options[i] != null) A[id] = f.options[i]; }
+      else if (t === "checks") { var sel = f.options.filter(function (o, k) { return v[k] === 1; }); if (sel.length) A[id] = sel; }
+      else if (t === "valuedate") { if (s(0) || s(1)) { A[id + "__value"] = s(0); A[id + "__date"] = s(1); A[id] = s(0) && s(1) ? s(0) + " @ " + s(1) : s(0) || s(1); } }
+      else if (t === "baseline") {
+        if (v[2] === 1) { if (s(3)) { A[id] = "Plan: " + s(3); A[id + "__mode"] = "plan"; A[id + "__plan"] = s(3); } }
+        else if (s(0) || s(1)) { A[id] = s(0) && s(1) ? s(0) + " @ " + s(1) : s(0) || s(1); A[id + "__mode"] = "value"; A[id + "__value"] = s(0); A[id + "__date"] = s(1); }
+      }
+      else if (t === "titlesummary") { if (s(0) || s(1)) { A[id + "__title"] = s(0); A[id + "__summary"] = s(1); A[id] = [s(0), s(1)].filter(Boolean).join(" — "); } }
+      else if (t === "datepair") {
+        if (s(0) || s(1)) {
+          A[id + "__start"] = s(0); A[id + "__end"] = s(1);
+          if (s(0) && s(1)) {                                  // same duration rule as the form
+            var d1 = new Date(s(0) + "T00:00:00"), d2 = new Date(s(1) + "T00:00:00");
+            var mo = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()); if (d2.getDate() < d1.getDate()) mo -= 1;
+            if (!isNaN(mo)) A[id + "__months"] = mo;
+            if (mo > 0) A[id] = s(0) + " to " + s(1);
+          }
+        }
+      }
+      else if (t === "composite") {
+        var any = false, vals = {};
+        f.parts.forEach(function (p, k) { if (s(k)) { any = true; vals[p.k] = s(k); A[id + "__" + p.k] = s(k); } });
+        if (any) A[id] = [vals.name, vals.title, vals.email, vals.phone].filter(Boolean).join(", ");
+      }
+      else if (t === "milestones") {
+        rows = []; for (r = 0; r < 3; r++) rows.push({ milestone: s(r * 3), date: s(r * 3 + 1), evidence: s(r * 3 + 2) });
+        if (rows.some(function (x) { return x.milestone || x.date || x.evidence; })) {
+          A[id + "__rows"] = rows; A[id] = rows.map(function (x) { return [x.milestone, x.date, x.evidence].filter(Boolean).join(" | "); }).filter(Boolean).join("; ");
+        }
+      }
+      else if (t === "funders") {
+        var yn = v[0] === 1 ? "No" : v[1] === 1 ? "Yes" : "";            // the form builds these radios in the order No, Yes
+        rows = []; for (r = 0; r < 2; r++) rows.push({ funder: s(2 + r * 3), amount: s(3 + r * 3), status: s(4 + r * 3) });
+        var named = rows.filter(function (x) { return x.funder; });
+        if (yn) { A[id + "__yn"] = yn; A[id + "__rows"] = rows; A[id] = yn === "Yes" && named.length ? "Yes. " + named.map(function (x) { return [x.funder, x.amount, x.status].filter(Boolean).join(", "); }).join("; ") : yn; }
+      }
+      else if (t === "budget") {
+        var cats = {}, anyc = false; f.cats.forEach(function (c, k) { cats[c] = s(k); if (s(k)) anyc = true; });
+        if (anyc) { A[id + "__cats"] = cats; A[id] = f.cats.filter(function (c) { return cats[c]; }).map(function (c) { return c + " " + cats[c]; }).join(", "); }
+      }
+      else if (t === "safeguard") { if (v[0] === 1 || s(1)) { A[id + "__committed"] = v[0] === 1; A[id + "__person"] = s(1); A[id] = s(1) || "A policy will be in place before funding"; } }
+      else if (t === "submitter") { if (s(0) || s(1)) { A[id + "__name"] = s(0); if (s(1)) A[id + "__date"] = s(1); A[id] = [s(0), s(1)].filter(Boolean).join(", "); } }   // the date is a read-only field the form fills itself, so older drafts never kept it
+    });
+    return A;
+  }
+  var REQ_ALWAYS = FIELDS.filter(function (f) { return f.req && !f.showIf; });     // required for everybody (the others depend on earlier answers)
+  function draftInfo(d) {
+    if (d._i) return d._i;
+    var A = d.answers || decodeFields(d.fields || {});
+    var done = REQ_ALWAYS.filter(function (f) { return nonEmpty(A[f.id]) || !!d.files[f.id]; }).length;
+    var secs = SECTIONS.filter(function (sec) { return FIELDS.some(function (f) { return f.s === sec.id && (nonEmpty(A[f.id]) || !!d.files[f.id]); }); }).length;
+    var email = (d.email || A.D1__email || "").toLowerCase(), filledQ = FIELDS.filter(function (f) { return nonEmpty(A[f.id]) || !!d.files[f.id]; }).length;
+    d._i = { A: A, done: done, total: REQ_ALWAYS.length, pct: REQ_ALWAYS.length ? Math.round(done / REQ_ALWAYS.length * 100) : 0, secs: secs, email: email, filled: filledQ,
+      name: A.B1 || "", expired: Date.now() - new Date(d.updated_at).getTime() > DRAFT_TTL_MS };
+    return d._i;
+  }
+  function submittedEmails() {
+    var m = {}; APPS.forEach(function (a) { [a.answers.D1__email, a.answers.D4].forEach(function (e) { if (e) m[String(e).toLowerCase()] = 1; }); }); return m;
+  }
+  function draftStatus(d) { var i = draftInfo(d); return { expired: i.expired, submitted: !!(i.email && submittedEmails()[i.email]) }; }
+  function activeDrafts() { return (DRAFTS || []).filter(function (d) { var s = draftStatus(d); return !s.expired && !s.submitted; }); }
+  function draftSearch(d) {
+    if (d._s) return d._s; var i = draftInfo(d), parts = [i.email];
+    Object.keys(i.A).forEach(function (k) { parts.push(txt(i.A[k])); }); Object.keys(d.files).forEach(function (k) { parts.push(d.files[k]); });
+    d._s = parts.join(" \n ").toLowerCase(); return d._s;
+  }
+  var DF = { q: "", show: "active", sort: "saved" };
+  function progress(pct, label) {
+    var w = el("div", "prog"), tr = el("div", "track"), fl = el("div", "fill"); fl.style.width = pct + "%"; tr.appendChild(fl); w.appendChild(tr);
+    w.appendChild(el("span", "ptxt", label)); w.setAttribute("role", "img"); w.setAttribute("aria-label", label); return w;
+  }
+  function statusChips(d, host) {
+    var st = draftStatus(d);
+    if (st.submitted) host.appendChild(el("span", "chip good", "Already submitted"));
+    if (st.expired) host.appendChild(el("span", "chip gray", "Expired"));
+    if (!st.submitted && !st.expired) host.appendChild(el("span", "chip warm", "In progress"));
+  }
+  var draftRowsHost, draftCount;
+  function renderDrafts() {
+    var m = clear($("main"));
+    m.appendChild(pageHead("Drafts", "People who started an application and have not submitted it yet."));
+    if (DRAFTS === null) {
+      var e = el("div", "card empty"); e.appendChild(el("b", null, "Drafts are not available yet"));
+      e.appendChild(el("span", null, "The server needs the latest version of the intake function (see docs/dashboard.md).")); m.appendChild(e); return;
+    }
+    var act = activeDrafts(), week = act.filter(function (d) { return Date.now() - new Date(d.updated_at).getTime() < 7 * 86400000; }).length;
+    var avg = act.length ? Math.round(act.reduce(function (s, d) { return s + draftInfo(d).pct; }, 0) / act.length) : 0;
+    var sub = (DRAFTS || []).filter(function (d) { return draftStatus(d).submitted; }).length;
+    var tiles = el("div", "tiles");
+    tiles.appendChild(tile(String(act.length), "Drafts in progress", "Started and not submitted"));
+    tiles.appendChild(tile(String(week), "Active in the last 7 days", "Saved at least once this week"));
+    tiles.appendChild(tile(avg + "%", "Average progress", "Of the questions everybody must answer"));
+    tiles.appendChild(tile(String(sub), "Already submitted", "Same email as a submitted application"));
+    m.appendChild(tiles);
+    var p = el("p", "notice", "A draft disappears when its owner submits the application, and expires after 60 days without changes. Files are never stored in a draft, only their names.");
+    m.appendChild(p);
+    var tb = el("div", "toolbar");
+    var q = el("input"); q.type = "search"; q.placeholder = "Search any answer, email, organization…"; q.value = DF.q; q.setAttribute("aria-label", "Search drafts");
+    q.addEventListener("input", function () { DF.q = q.value; renderDraftRows(); }); tb.appendChild(q);
+    var sh = el("select"); sh.setAttribute("aria-label", "Which drafts to show");
+    [["active", "In progress only"], ["all", "All, including expired and submitted"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; if (o[0] === DF.show) op.selected = true; sh.appendChild(op); });
+    sh.addEventListener("change", function () { DF.show = sh.value; renderDraftRows(); }); tb.appendChild(sh);
+    var so = el("select"); so.setAttribute("aria-label", "Sort drafts");
+    [["saved", "Recently saved"], ["complete", "Most complete"], ["old", "Oldest first"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; if (o[0] === DF.sort) op.selected = true; so.appendChild(op); });
+    so.addEventListener("change", function () { DF.sort = so.value; renderDraftRows(); }); tb.appendChild(so);
+    draftCount = el("span", "count"); tb.appendChild(draftCount); m.appendChild(tb);
+    draftRowsHost = el("div", "list"); m.appendChild(draftRowsHost); renderDraftRows();
+  }
+  function renderDraftRows() {
+    var q = DF.q.trim().toLowerCase();
+    var list = DRAFTS.filter(function (d) { var st = draftStatus(d); if (DF.show === "active" && (st.expired || st.submitted)) return false; return !q || draftSearch(d).indexOf(q) !== -1; });
+    list.sort(function (x, y) {
+      if (DF.sort === "complete") return draftInfo(y).pct - draftInfo(x).pct || String(y.updated_at).localeCompare(String(x.updated_at));
+      if (DF.sort === "old") return String(x.updated_at).localeCompare(String(y.updated_at));
+      return String(y.updated_at).localeCompare(String(x.updated_at));
+    });
+    draftCount.textContent = list.length + " of " + DRAFTS.length + " shown"; clear(draftRowsHost);
+    if (!list.length) {
+      var e = el("div", "empty"); e.appendChild(el("b", null, DRAFTS.length ? "No draft matches" : "No drafts yet"));
+      e.appendChild(el("span", null, DRAFTS.length ? "Try a different search, or show all drafts." : "Drafts appear when someone saves their progress in the form.")); draftRowsHost.appendChild(e); return;
+    }
+    var t = el("table", "main"), th = el("thead"), hr = el("tr");
+    [["Who", ""], ["Progress", ""], ["Sections started", "num"], ["Last saved", ""], ["Started", ""], ["Status", ""]].forEach(function (h) { hr.appendChild(el("th", h[1], h[0])); });
+    th.appendChild(hr); t.appendChild(th); var tbd = el("tbody");
+    list.forEach(function (d) {
+      var i = draftInfo(d), tr = el("tr", "row"); tr.tabIndex = 0; tr.setAttribute("role", "link");
+      var c1 = el("td"), w = el("div", "who"), av = el("div", "mono-av", (i.name || i.email || "?").replace(/^[^A-Za-z0-9À-ÿ]+/, "").charAt(0) || "?");
+      var bx = el("div"); bx.appendChild(el("div", "org", i.name || "(no organization name yet)"));
+      if (i.email) bx.appendChild(el("div", "proj", i.email));
+      w.appendChild(av); w.appendChild(bx); c1.appendChild(w); tr.appendChild(c1);
+      var pc = el("td"); pc.setAttribute("data-l", "Progress"); pc.appendChild(progress(i.pct, i.done + " of " + i.total + " required")); tr.appendChild(pc);
+      tr.appendChild(cell("Sections started", i.secs + " of " + SECTIONS.length, "num"));
+      tr.appendChild(cell("Last saved", ago(d.updated_at) + " · " + day(d.updated_at)));
+      tr.appendChild(cell("Started", day(d.created_at)));
+      var st = el("td"); st.setAttribute("data-l", "Status"); statusChips(d, st); tr.appendChild(st);
+      var open = function () { location.hash = "#/draft/" + encodeURIComponent(d.id); };
+      tr.addEventListener("click", open); tr.addEventListener("keydown", function (ev) { if (ev.key === "Enter") open(); });
+      tbd.appendChild(tr);
+    });
+    t.appendChild(tbd); draftRowsHost.appendChild(t);
+  }
+  function renderDraft(d) {
+    var i = draftInfo(d), m = clear($("main"));
+    var cr = el("div", "crumbs"), back = el("a", "btn small", "← Drafts"); back.href = "#/drafts"; cr.appendChild(back); m.appendChild(cr);
+    var head = el("div", "card head"); head.appendChild(el("div", "mono-av", (i.name || i.email || "?").replace(/^[^A-Za-z0-9À-ÿ]+/, "").charAt(0) || "?"));
+    var hb = el("div"); hb.style.minWidth = "0"; hb.style.flex = "1";
+    hb.appendChild(el("p", "kicker", "Draft · not submitted")); hb.appendChild(el("h2", null, i.name || "(no organization name yet)"));
+    statusChips(d, hb);
+    var facts = el("div", "facts");
+    facts.appendChild(fact("Contact email", i.email)); facts.appendChild(fact("Project", i.A.E1__title)); facts.appendChild(fact("Country", i.A.B2));
+    facts.appendChild(fact("Amount requested", nonEmpty(i.A.G2) ? money(num(i.A.G2)) : ""));
+    facts.appendChild(fact("Progress", i.done + " of " + i.total + " required answered (" + i.pct + "%)"));
+    facts.appendChild(fact("Sections started", i.secs + " of " + SECTIONS.length));
+    facts.appendChild(fact("Last saved", when(d.updated_at) + " (" + ago(d.updated_at) + ")")); facts.appendChild(fact("Started", when(d.created_at)));
+    hb.appendChild(facts); head.appendChild(hb); m.appendChild(head);
+    m.appendChild(el("p", "notice", "This is an unfinished draft: answers can still change and files are not stored in a draft. The applicant continues it with their own code."));
+    var lay = el("div", "layout"), rail = el("nav", "rail"), body = el("div");
+    rail.setAttribute("aria-label", "Sections"); rail.appendChild(el("p", "rt", "Sections")); lay.appendChild(rail); lay.appendChild(body); m.appendChild(lay);
+    buildSections({ answers: i.A, files: [], draftFiles: d.files, profile: null }, body, rail, true);
   }
 
   /* ---------- overview (charts) ---------- */

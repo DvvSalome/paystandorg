@@ -210,3 +210,14 @@ td.num, th.num { text-align: right; white-space: nowrap; }
   body { background: #fff; } .nav, .toolbar, .tiles, .rail, .crumbs, .chips, .toast, .tip, .skip { display: none !important; }
   .layout { display: block; } .card, .list { box-shadow: none; } .sec { break-inside: auto; border: 1px solid #ccc; }
 }
+
+/* ---------- drafts ---------- */
+.pill.soft { background: rgba(255,255,255,.22); color: #fff; }
+.tile.link { cursor: pointer; } .tile.link:hover, .tile.link:focus-visible { box-shadow: 0 4px 18px rgba(0,27,91,.16); }
+.chip.good { background: #DDF3EA; color: #0B5A40; }
+.chip.gray { background: #E6EAF0; color: #3A4658; }
+.prog { display: flex; align-items: center; gap: 10px; min-width: 150px; }
+.prog .track { flex: 1; height: 8px; border-radius: 99px; background: #DCE5F2; overflow: hidden; min-width: 60px; }
+.prog .fill { height: 100%; background: var(--blue); border-radius: 99px; }
+.prog .ptxt { font-size: .84rem; color: var(--gray); white-space: nowrap; }
+.notice { background: #FFF6E9; border: 1px solid #F4D9A8; color: #5C3D0B; border-radius: 12px; padding: 10px 14px; margin: 0 0 16px; font-size: .92rem; }
